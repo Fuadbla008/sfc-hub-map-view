@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hub Map — Interactive Hub Locator</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+<style>
+  :root{
+    --bg:#080d18;
+    --panel:rgba(15,23,42,.78);
+    --line:rgba(255,255,255,.09);
+    --text:#e8eefc;
+    --muted:#8ea2c0;
+    --accent:#22d3ee;
+    --accent2:#a78bfa;
+    --glow:0 0 22px rgba(34,211,238,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Bengali',sans-serif;
+    background:var(--bg); color:var(--text); overflow:hidden;
+  }
+  #app{display:flex; height:100%;}
+
+  /* ---------------- SIDEBAR ---------------- */
+  #side{
+    width:350px; flex:0 0 350px; display:flex; flex-direction:column;
+    background:linear-gradient(180deg,#0d1526 0%,#080d18 100%);
+    border-right:1px solid var(--line);
+    position:relative; z-index:1200;
+    box-shadow: 12px 0 40px rgba(0,0,0,.55);
+  }
+  #side header{
+    display:flex; align-items:center; gap:12px;
+    padding:18px 18px 14px; border-bottom:1px solid var(--line);
+  }
+  .logo{
+    width:42px;height:42px;border-radius:13px;display:grid;place-items:center;
+    font-size:20px;font-weight:800;color:#04121b;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    box-shadow:var(--glow);
+  }
+  #side h1{margin:0;font-size:16px;letter-spacing:.3px}
+  #side header p{margin:2px 0 0;font-size:11.5px;color:var(--muted)}
+
+  .searchwrap{padding:14px 16px 6px}
+  .searchwrap input{
+    width:100%; padding:11px 14px 11px 38px; border-radius:12px;
+    background:rgba(255,255,255,.05); border:1px solid var(--line);
+    color:var(--text); font-size:13.5px; outline:none;
+    transition:.2s; font-family:inherit;
+  }
+  .searchwrap input:focus{
+    border-color:rgba(34,211,238,.55);
+    box-shadow:0 0 0 3px rgba(34,211,238,.12);
+    background:rgba(255,255,255,.07);
+  }
+  .searchbox{position:relative}
+  .searchbox::before{
+    content:"⌕"; position:absolute; left:14px; top:50%; transform:translateY(-52%);
+    color:var(--muted); font-size:17px; pointer-events:none;
+  }
+
+  .stats{display:flex; gap:10px; padding:12px 16px 10px}
+  .stats > div{
+    flex:1; background:rgba(255,255,255,.035); border:1px solid var(--line);
+    border-radius:12px; padding:9px 10px; text-align:center;
+  }
+  .stats b{display:block; font-size:17px; color:var(--accent)}
+  .stats span{font-size:10.5px; color:var(--muted); letter-spacing:.4px; text-transform:uppercase}
+
+  #list{flex:1; overflow-y:auto; padding:4px 10px 14px;}
+  #list::-webkit-scrollbar{width:8px}
+  #list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12); border-radius:8px}
+  #list::-webkit-scrollbar-track{background:transparent}
+
+  .item{
+    display:flex; gap:11px; align-items:center;
+    padding:9px 11px; border-radius:11px; cursor:pointer;
+    border:1px solid transparent; transition:.16s;
+  }
+  .item:hover{background:rgba(255,255,255,.055); border-color:var(--line)}
+  .item.active{
+    background:linear-gradient(90deg,rgba(34,211,238,.16),rgba(167,139,250,.09));
+    border-color:rgba(34,211,238,.45);
+  }
+  .dot{
+    width:9px;height:9px;border-radius:50%;flex:0 0 9px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    box-shadow:0 0 10px rgba(34,211,238,.8);
+  }
+  .item .t{font-size:12.8px; line-height:1.3; overflow:hidden;
+           display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
+  .item .i{font-size:10px; color:var(--muted); margin-top:2px; font-variant-numeric:tabular-nums}
+  .empty{padding:26px 14px; text-align:center; color:var(--muted); font-size:12.5px}
+
+  #side footer{
+    padding:11px 16px; font-size:10.5px; color:var(--muted);
+    border-top:1px solid var(--line); text-align:center; letter-spacing:.3px;
+  }
+
+  /* ---------------- MAP ---------------- */
+  #map{flex:1; height:100%; background:#05080f}
+  .leaflet-container{background:#05080f; font-family:inherit}
+
+  /* OSM লাইট ম্যাপ ডার্ক মোডে নেওয়ার ফিল্টার */
+  #map.map-dark .leaflet-tile-pane{
+    filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(1.1) saturate(0.8);
+  }
+  #map.map-dark .leaflet-control-attribution{
+    background: rgba(10,16,28,.85) !important;
+    color:#7c8ba3 !important;
+  }
+  #map.map-dark .leaflet-control-attribution a{ color:#22d3ee !important; }
+  #map.map-dark .leaflet-control-scale-line{
+    background: rgba(10,16,28,.75); color:#9fb0c8; border-color:#334155;
+  }
+
+  /* pin */
+  .hub-pin{background:none!important; border:none!important}
+  .hub-pin span{
+    display:block; width:14px; height:14px; border-radius:50%;
+    background:radial-gradient(circle at 32% 30%, #7ff3ff, #22d3ee 55%, #0b8fb0);
+    box-shadow:0 0 0 2.5px rgba(34,211,238,.22), 0 0 14px rgba(34,211,238,.85);
+    transition:transform .15s;
+  }
+  .hub-pin:hover span{transform:scale(1.45)}
+
+  /* clusters */
+  .cluster-icon{background:none!important;border:none!important}
+  .cl{
+    width:100%;height:100%;border-radius:50%;display:grid;place-items:center;
+    font-size:12.5px;font-weight:800;color:#04121b;
+    background:radial-gradient(circle at 30% 26%, rgba(167,139,250,.98), rgba(34,211,238,.92));
+    border:1px solid rgba(255,255,255,.42);
+    box-shadow:0 0 0 6px rgba(34,211,238,.11), 0 0 24px rgba(34,211,238,.5);
+  }
+
+  /* popup */
+  .leaflet-popup-content-wrapper{
+    background:linear-gradient(180deg,#111c31,#0b1322);
+    color:var(--text); border-radius:16px; border:1px solid rgba(255,255,255,.13);
+    box-shadow:0 22px 55px rgba(0,0,0,.7), 0 0 0 1px rgba(34,211,238,.16);
+    padding:0;
+  }
+  .leaflet-popup-content{margin:0; width:auto!important}
+  .leaflet-popup-tip{background:#0b1322; border:1px solid rgba(255,255,255,.13)}
+  .leaflet-popup-close-button{color:var(--muted)!important; font-size:20px!important; padding:8px 9px 0 0!important}
+  .leaflet-popup-close-button:hover{color:var(--accent)!important}
+
+  .pop{padding:15px 16px 14px; min-width:236px}
+  .pop .badge{
+    display:inline-block; font-size:10px; font-weight:700; letter-spacing:.6px;
+    padding:3px 9px; border-radius:999px; color:#04121b;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    margin-bottom:8px;
+  }
+  .pop h3{margin:0 0 11px; font-size:14.5px; line-height:1.35; font-weight:700}
+  .pop .row{display:flex; gap:9px; align-items:flex-start; margin-bottom:7px; font-size:12px; color:#c9d6ea}
+  .pop .row i{font-style:normal; opacity:.85; font-size:12.5px; line-height:1.45}
+  .pop .row a{color:var(--accent); text-decoration:none; font-weight:600}
+  .pop .row a:hover{text-decoration:underline}
+  .pop .coords{font-variant-numeric:tabular-nums; letter-spacing:.2px}
+  .pop .actions{display:flex; gap:8px; margin-top:12px}
+  .pop .btn{
+    flex:1; text-align:center; text-decoration:none; cursor:pointer;
+    font-size:11.5px; font-weight:700; padding:8px 6px; border-radius:10px;
+    color:#04121b; border:none; font-family:inherit;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    transition:.18s;
+  }
+  .pop .btn:hover{filter:brightness(1.12); transform:translateY(-1px)}
+  .pop .btn.ghost{
+    background:rgba(255,255,255,.07); color:var(--text);
+    border:1px solid rgba(255,255,255,.15);
+  }
+
+  /* map floating buttons */
+  .mapbtns{position:absolute; right:14px; top:14px; z-index:1000; display:flex; flex-direction:column; gap:8px}
+  .mbtn{
+    width:40px; height:40px; border-radius:12px; cursor:pointer;
+    display:grid; place-items:center; font-size:16px;
+    background:rgba(15,23,42,.82); color:var(--text);
+    border:1px solid rgba(255,255,255,.13); backdrop-filter:blur(10px);
+    transition:.18s;
+  }
+  .mbtn:hover{border-color:rgba(34,211,238,.6); color:var(--accent); box-shadow:0 0 16px rgba(34,211,238,.3)}
+
+  /* mobile */
+  #menuBtn{display:none}
+  @media (max-width:860px){
+    #side{
+      position:fixed; inset:0 auto 0 0; width:300px; flex:0 0 300px;
+      transform:translateX(-102%); transition:transform .28s ease;
+    }
+    #side.open{transform:translateX(0)}
+    #menuBtn{
+      display:grid; position:absolute; left:14px; top:14px; z-index:1300;
+      width:42px;height:42px;border-radius:12px;place-items:center;cursor:pointer;
+      background:rgba(15,23,42,.85); border:1px solid rgba(255,255,255,.14);
+      color:var(--text); font-size:18px; backdrop-filter:blur(10px);
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <aside id="side">
+    <header>
+      <div class="logo">◈</div>
+      <div>
+        <h1>Hub Map</h1>
+        <p>Steadfast Hub Locator</p>
+      </div>
+    </header>
+
+    <div class="searchwrap">
+      <div class="searchbox">
+        <input id="q" type="text" placeholder="Search hub name / ID / phone…" autocomplete="off" />
+      </div>
+    </div>
+
+    <div class="stats">
+      <div><b id="cTotal">0</b><span>Total Hubs</span></div>
+      <div><b id="cShown">0</b><span>Showing</span></div>
+    </div>
+
+    <div id="list"></div>
+    <footer>Marker বা লিস্টে ক্লিক করলে ডিটেইলস দেখাবে</footer>
+  </aside>
+
+  <main style="position:relative;flex:1">
+    <div id="map"></div>
+    <div id="menuBtn">☰</div>
+    <div class="mapbtns">
+      <div class="mbtn" id="btnFit" title="Show all hubs">⛶</div>
+      <div class="mbtn" id="btnZoomIn" title="Zoom in">＋</div>
+      <div class="mbtn" id="btnZoomOut" title="Zoom out">−</div>
+      <div class="mbtn" id="btnTheme" title="Toggle Theme">🌙</div>
+    </div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<script>
+/* =====================================================================
+   HUB DATA   [ id, name, lat, lng, phone ]
+   ===================================================================== */
+const HUBS = [
+[959,"Abdullahpur (Austagram) Kishoreganj",24.1700,90.1700,"01334919473"],
+[108,"Adabor Hub",23.7715,90.3459,"01321230737, 09678045009"],
+[364,"Adamdighi (Bogura)",24.8233,89.0395,"01329683121"],
+[716,"Aditmari (Lalmonirhat)",25.9236,89.3454,"01334766057"],
+[685,"Agailjhara Hub (Barishal)",22.9730,90.1582,"01332567043"],
+[199,"Agargaon",23.7784,90.3696,"01324-762945"],
+[965,"Agrabad (Access Road)",22.3283,91.8044,"01334919538"],
+[33,"AGRABAD (CTG)",22.3295,91.8055,"01322-889462"],
+[854,"Ajmiriganj (Habiganj)",24.5606,91.2354,"01332846537"],
+[246,"Akhaura (B Baria)",23.8742,91.2098,"01329-671806"],
+[444,"Akkelpur (Joypurhat)",24.9668,89.0197,"01329683114"],
+[1033,"Akter Miyar Hat (Subarnachar) Noakhali",22.6373,91.2379,"01334930542"],
+[241,"Alamdanga (Chuadanga)",23.7551,88.9380,"01329-671828"],
+[719,"Alfadanga (Faridpur)",23.6066,89.8369,"01332567066"],
+[786,"Alikadam (Bandarban)",21.6537,92.3185,"01332846415"],
+[941,"Ambarkhana (Sylhet)",24.9084,91.8662,"01334919583"],
+[784,"Amishapara (Sonaimuri), Noakhali",23.0064,91.0365,"01334766012"],
+[300,"Amtali (Barguna)",22.1318,90.2287,"01329683198"],
+[109,"Anwara (CTG)",22.2247,91.8863,"01321230793"],
+[160,"Araihazar",23.7897,90.6528,"01324-762875"],
+[899,"Aruail (Sarail) B Baria",24.1467,91.0590,"01332846542"],
+[239,"Ashuganj (B Baria)",24.0395,91.0137,"01329683186"],
+[790,"Ashulia (Zirabo)",23.9139,90.3111,"01334766095"],
+[484,"Assasuni (Satkhira)",22.5483,89.1779,"01329-642914"],
+[844,"Ataikula (Pabna)",24.0372,89.4117,"01332846535"],
+[756,"Atgoriya (Pabna)",24.0854,89.2192,"01332567016"],
+[200,"Ati Bazar (Keraniganj)",23.7391,90.3201,"01324762932"],
+[849,"Atpara (Netrokona)",24.8074,90.8606,"01332846418"],
+[785,"Atrai (Naogaon)",24.6086,88.9842,"01334766033"],
+[877,"Atwari (Panchagarh)",26.1952,88.6152,"01332846524"],
+[991,"Aushkandi (Nabiganj), Habiganj",24.5877,91.6030,"01334919483"],
+[717,"Austagram (Kishoreganj)",24.2759,91.1015,"01332567029"],
+[775,"B-Baria Warehouse",24.0560,91.1316,"01334766014"],
+[850,"Bablatola (Patuakhali)",21.8598,90.2361,"01332846557"],
+[549,"Babuganj (Barishal)",22.8105,90.3038,"01332567041"],
+[1007,"Babur Hat (Chandpur)",23.2654,90.6953,"01334930508"],
+[842,"Baburail Hub (Narayanganj)",23.6096,90.4916,"09678 045 045"],
+[839,"Baburhat (Narsingdi)",23.8666,90.6685,"01332843436"],
+[661,"Badarganj (Rangpur)",25.6685,89.0510,"01329642983"],
+[983,"Badarkhali (Chakaria) Cox's Bazar",21.7180,91.9571,"01334919475"],
+[36,"Badda",23.7761,90.4254,"01322889451"],
+[831,"Badda (Satarkul)",23.7890,90.4352,"01332843428"],
+[766,"Badolgachi (Naogaon)",24.9650,88.9035,"01334766001"],
+[731,"Bagatipara (Natore)",24.3044,88.9574,"01332567007"],
+[78,"Bagerhat",22.6600,89.7762,"01321-230753"],
+[1012,"Bagerhat Shorting Center",22.6721,89.7613,"01334930511"],
+[296,"Bagha (Rajshahi)",24.1932,88.8321,"01329683182"],
+[972,"Baghaichari (Rangamati)",23.1639,92.1917,"01830210985"],
+[270,"Bagharpara (Jashore)",23.2178,89.3493,"01329683147"],
+[275,"Bagmara (Rajshahi)",24.5809,88.8184,"01329-642943"],
+[400,"Bahubal (Habiganj)",24.3200,91.5400,"01332567047"],
+[39,"Baipail (Ashulia)",23.9275,90.2660,"01322889459"],
+[944,"Baipail More",23.9407,90.2711,"01334919402"],
+[258,"Bajitpur (Kishoreganj)",24.2103,90.9632,"01329671812"],
+[902,"Bakchar (Jashore)",23.1475,89.2321,"01334919568"],
+[273,"Bakerganj (Barishal)",22.5371,90.3362,"01329-671841"],
+[645,"Bakolia (CTG)",22.3449,91.8527,"01329642994"],
+[592,"Bakshiganj (Jamalpur)",25.1822,89.8675,"01329642926"],
+[883,"Balaganj (Sylhet)",24.6559,91.8186,"01332846538"],
+[870,"Baliadangi (Thakurgaon)",26.0875,88.2794,"01332846521"],
+[464,"Baliakandi Hub (Rajbari)",23.6358,89.5522,"01329642901"],
+[741,"Bamna (Barguna)",22.3067,90.0960,"01334766010"],
+[895,"Banani Hub",23.7811,90.4082,"09678045097"],
+[281,"Banaripara (Barishal)",22.7793,90.1706,"01329671840"],
+[955,"Banchanagar (Laxmipur)",22.9412,90.8126,"01334919464"],
+[165,"Bancharampur (B Baria)",23.7783,90.8001,"01324762884"],
+[337,"Bandar (Narayanganj)",23.5910,89.3965,"01322931872"],
+[788,"Bandar CTG",22.3014,91.7917,"01334766080"],
+[119,"Bandarban",22.1864,92.2267,"01321230774"],
+[145,"Baneshwar (Rajshahi)",24.3688,88.7486,"01329683136"],
+[825,"Bangla Bazar (Dhaka)",23.7053,90.4124,"01332843422"],
+[286,"Baniachong (Habiganj)",24.5145,91.3621,"01329671810"],
+[168,"Banskhali (Ctg)",22.0595,91.9398,"01324762894"],
+[732,"Banti Bazar (Narayanganj)",23.8133,90.5932,"01332567097"],
+[999,"Bara Chaona (Sakhipur) Tangail",24.3871,90.1924,"01334919495"],
+[984,"Baraitoli (Chakaria) Cox's Bazar",21.8322,92.0673,"01334919476"],
+[117,"Barguna",22.1697,90.1219,"01321-230773"],
+[804,"Barguna (Sadar)",22.1589,90.1108,"01334766087"],
+[733,"Barhatta (Netrokona)",24.8447,90.5839,"01332567040"],
+[801,"Barishal College Road",22.7047,90.3524,"01334766084"],
+[25,"Barishal Sadar",22.7019,90.3473,"01321230709"],
+[940,"Barishal Shorting Center",22.7440,90.3224,"01334919584"],
+[368,"Barlekha (Moulvibazar)",24.7040,92.1952,"01329683183"],
+[708,"Baroiyarhat (Mirsharai)-CTG",22.8847,91.5323,"01334766063"],
+[914,"Baropur (Bogura)",24.8791,89.3525,"01332846530"],
+[174,"Barura (Cumilla)",23.3800,91.0600,"01324762944"],
+[762,"Basail (Tangail)",24.2496,89.9166,"01332846520"],
+[813,"Bashabo (Khilgaon)",23.7342,90.4432,"01332843400"],
+[57,"Bashundhara",23.8219,90.4226,"01322889467"],
+[987,"Bastail, Mirzapur (Tangail)",24.1759,90.1723,"01334919458"],
+[488,"Batiaghata (Khulna)",22.7266,89.5175,"01329-683143"],
+[882,"Batisha (Chauddagram) Cumilla",23.1460,91.3100,"01332846441"],
+[474,"Bauphal (Patuakhali)",22.4193,90.5565,"01332567079"],
+[105,"Beanibazar (Sylhet)",24.8304,92.1628,"01321230782"],
+[623,"Belabo (Narsingdi)",24.0799,90.9000,"01332567051"],
+[822,"Belkuchi (Hasan Plaza)",24.3035,89.6976,"01332843418"],
+[292,"Belkuchi (Sirajganj)",24.3036,89.6976,"01334766020"],
+[890,"Benapole (Bandar complex)",23.0446,88.8996,"01332846562"],
+[141,"Benapole (Jashore)",23.0427,88.8939,"01324762925"],
+[307,"Bera, Kashinathpur (Pabna)",23.9699,89.5985,"01329683135"],
+[541,"Betagi (Barguna)",22.4093,90.1714,"01334766009"],
+[1002,"Bhairab (College Road)",24.0634,90.9789,"01334930500"],
+[99,"Bhairab (Kishoreganj)",24.0541,90.9818,"01321-230775"],
+[82,"Bhaluka (Mymensingh)",24.4079,90.3866,"01321230745"],
+[299,"Bhandaria (Pirojpur)",22.4892,90.0631,"01329683184"],
+[149,"Bhanga - Faridpur Warehouse",23.3946,89.9706,"01324-762939"],
+[1024,"Bhanga - Faridpur Warehouse Fleet Mgmt",23.3944,89.9706,"01724451829"],
+[89,"Bhanga (Faridpur)",23.3928,89.9722,"01324762912"],
+[699,"Bhangura (Pabna)",24.2162,89.3785,"01332567012"],
+[787,"Bhatiari (Sitakunda)-CTG",22.4292,91.7457,"01334766049"],
+[990,"Bhatiary (Station Road)",22.4280,91.7430,"01334919500"],
+[392,"Bhedarganj (Shariatpur)",23.1951,90.4507,"01329642924"],
+[189,"Bheramara (Kushtia)",24.0167,88.9905,"01324762943"],
+[86,"Bhola",22.6819,90.6529,"01321230722"],
+[837,"Bhola (Rayer Bazar)",22.6870,90.6376,"1332843435"],
+[923,"Bholahat (Chapai)",24.9354,88.2210,"01332846460"],
+[537,"Bhuapur (Tangail)",24.4300,89.8600,"01329642934"],
+[705,"Bhujpur (Fatikchhari)-CTG",22.8479,91.7097,"01332567024"],
+[758,"Bhurungamari (Kurigram)",26.1009,89.6705,"01334766069"],
+[228,"Bijoynagar (B Baria)",24.0600,91.2600,"01329683197"],
+[135,"Birampur (Dinajpur)",25.3992,88.9930,"01324762870"],
+[267,"Birganj (Dinajpur)",25.8494,88.6549,"01329-671830"],
+[770,"Birol (Dinajpur)",25.6378,88.5510,"01334766040"],
+[684,"Bishwamvarpur Hub (Sunamganj)",25.1201,91.3357,"01332567052"],
+[284,"Bishwanath (Sylhet)",24.8144,91.7597,"01329671802"],
+[910,"Bittipara EB (Kushtia)",23.7918,89.1089,"01332846423"],
+[282,"Boalkhali (CTG)",22.3749,91.9074,"01329642941"],
+[221,"Boalmari (Faridpur)",23.3954,89.6838,"01329671803"],
+[608,"Bochaganj (Dinajpur)",25.8114,88.4602,"01334766039"],
+[440,"Boda (Panchagarh)",26.2039,88.5552,"01334766052"],
+[30,"Bogura",24.8410,89.3671,"01321230704"],
+[830,"Bogura (Seuzgari)",24.8466,89.3648,"01332843427"],
+[1020,"Bogura Shorting Center",24.8790,89.3525,"01332846511"],
+[971,"Bolla, Rampur, Kalihati (Tangail) Entry Point",24.3299,90.0200,"01332846439"],
+[986,"Bonpara Bypass more (Natore)",24.2978,89.0798,"01334919511"],
+[276,"Boraigram (Natore)",24.2864,89.0803,"01329671848"],
+[294,"Borhanuddin (Bhola)",22.4984,90.7129,"01329683189"],
+[976,"Boro Sorundi (Manikganj)",23.8457,90.0133,"01334919479"],
+[1010,"Bottali (Nangalkot) Cumilla",23.1054,91.2002,"01334930510"],
+[922,"Boultali (Gopalganj)",23.1006,89.8853,"01332846429"],
+[909,"Brahmanbaria Sadar",23.9769,91.1005,"01332846426"],
+[170,"Brahmmanpara (Cumilla)",23.6117,91.1079,"01334766060"],
+[1009,"Burhan Uddin Bazar, Kanaighat (Sylhet)",24.9221,92.1255,"01334930521"],
+[172,"Burichang (Cumilla)",23.5498,91.1284,"01324762899"],
+[715,"Cantonment (Cumilla)",23.4806,91.0705,"01332567028"],
+[58,"Central Hub",23.7387,90.3753,"09678045045"],
+[68,"Central Warehouse",23.7358,90.3286,"01322-889476"],
+[247,"Chagalnaiya (Feni)",23.0359,91.5159,"01329671837"],
+[114,"Chakaria (Cox's Bazar)",21.7569,92.0756,"01321-230796"],
+[207,"Chandanaish (CTG)",22.2223,92.0272,"01329671825"],
+[28,"Chandgaon (CTG)",22.3902,91.8634,"01329683192"],
+[70,"Chandina (Cumilla)",23.4868,91.0111,"01321230794"],
+[67,"Chandpur",23.2334,90.6686,"01321230718"],
+[123,"Chandra",24.0241,90.2777,"01321230779"],
+[312,"Chandraganj (Laxmipur)",22.9425,90.9553,"01329671807"],
+[797,"Chandrima (Rajshahi)",24.4007,88.6322,"01334766035"],
+[997,"Chankharpul Dhaka",23.7240,90.3994,"01334930504"],
+[112,"Chapai Nawabganj",24.5849,88.2803,"01321230772"],
+[935,"Chapainababganj (Shantir More)",24.5905,88.2693,"01332846464"],
+[966,"Chaprashirhat (Companiganj), Noakhali",22.8123,91.2458,"01334919504"],
+[880,"Char Rajibpur (Kurigram)",25.4468,89.7946,"01332846527"],
+[718,"Charbhadrasan (Faridpur)",23.5594,90.0082,"01332567065"],
+[924,"Chargach (Kasba) B-Baria",23.8094,91.0858,"01332846431"],
+[755,"Charghat (Rajshahi)",24.8967,91.8717,"01334766074"],
+[707,"Charkaua (Barishal)",22.6880,90.3929,"01332567046"],
+[964,"Chatalpar Nasirnagar (B-Baria)",23.9717,90.5077,"01334919469"],
+[146,"Chatkhil (Noakhali)",23.0578,90.9689,"01324762922"],
+[321,"Chatmohar (Pabna)",24.2224,89.2981,"01329683137"],
+[906,"Chatok (Sunamganj)",25.0319,91.6665,"01332846458"],
+[94,"Chauddagram (Cumilla)",23.2356,91.3092,"01321230795"],
+[328,"Chaugachha (Jashore)",23.2613,89.0203,"01329-683185"],
+[5,"Chawakbazar (CTG)",22.3548,91.8360,"01322-889461"],
+[931,"Chawkbazar (Cumilla)",23.4647,91.1986,"01332846478"],
+[533,"Chawkbazar Pickup Hub (Old Dhaka)",23.7132,90.3982,"01329642999"],
+[795,"Chhayani (Begumganj), Noakhali",22.8977,91.0071,"01332846417"],
+[812,"Chilmari (Kurigram)",25.5799,89.6600,"01332846548"],
+[269,"Chirirbandar (Dinajpur)",25.6517,88.7761,"01329-671849"],
+[761,"Chitolmari (Bagerhat)",22.7960,89.8717,"01332567075"],
+[744,"Chittagong Fleet Management",22.3744,91.7768,"01324762956"],
+[823,"Chittagong Road (Narayanganj)",23.6957,90.5024,"01332843419"],
+[148,"Chittagong Warehouse",22.3730,91.7624,"01324762874"],
+[116,"Chowmuhani (Noakhali)",22.9305,91.1051,"01321230798"],
+[1006,"Chowrangi (Faridganj) Chandpur",23.1598,90.7829,"01334930507"],
+[111,"Chuadanga",23.6499,88.8575,"01321230766"],
+[891,"Chuadanga (Micro Bus Stand)",23.6429,88.8535,"01332846561"],
+[915,"Chuadanga Shorting Zone",23.6499,88.8575,"09678 045 045"],
+[251,"Chunarughat (Habiganj)",24.1861,91.5210,"01329683132"],
+[943,"Circuit House (Khulna)",22.8123,89.5705,"01334919567"],
+[151,"City Gate (CTG)",22.3740,91.7786,"01324762883"],
+[167,"Companiganj (Noakhali)",22.8818,91.2783,"01324762891"],
+[453,"Companiganj (Sylhet)",25.0872,91.7571,"01332567057"],
+[55,"Corporate Office",23.7386,90.3754,"09678 045 045"],
+[51,"Cox's Bazar",21.4365,91.9984,"01321230706"],
+[27,"Cumilla Sadar South",23.4606,91.1779,"01322889463"],
+[192,"Cumilla Warehouse",23.4777,91.0770,"01324762880"],
+[1031,"Cumilla Warehouse Fleet Management",23.4777,91.0770,"01334919409"],
+[142,"Dagunbhuiya (Feni)",22.9344,91.3189,"01324762903"],
+[929,"Dakbangla (Jhenaidah)",23.5607,89.0267,"01332846422"],
+[848,"Dakop (Khulna)",22.6069,89.5054,"01332846449"],
+[1001,"Dakshinbhag (Moulvibazar)",24.6397,92.1607,"01334919487"],
+[432,"Damudya (Shariatpur)",23.1490,90.4448,"01329-642907"],
+[860,"Damurhuda (Chuadanga)",23.6037,88.7800,"01332846445"],
+[998,"Dariapur (Gaibandha)",25.3924,89.5719,"01334930526"],
+[765,"Darshana (Chuadanga)",23.5238,88.7940,"01332567076"],
+[846,"Dasar (Madaripur)",23.0682,90.1802,"01334766013"],
+[651,"Dashmina (Patuakhali)",22.2818,90.5680,"01332846553"],
+[884,"Daudkandi (Cumilla)",23.5319,90.7179,"01332846550"],
+[449,"Daulatkhan Hub (Bhola)",22.5956,90.6879,"01332567078"],
+[888,"Daulatpur (Khulna)",22.8919,89.5130,"01332846442"],
+[712,"Dawlatpur (Manikganj)",23.9658,89.8327,"01332846401"],
+[857,"Debhata (Satkhira)",22.6051,89.0013,"01332846447"],
+[348,"Debidwar (Cumilla)",23.5900,91.0000,"01332846551"],
+[742,"Debiganj (Panchagarh)",26.1151,88.7621,"01334766054"],
+[518,"Delduar (Tangail)",24.0200,90.4200,"01329642912"],
+[102,"Demra",23.7059,90.4851,"01321230736"],
+[217,"Derai (Sunamganj)",24.7922,91.3531,"01329683130"],
+[194,"Dewanganj (Jamalpur)",25.1613,89.7644,"01324762909"],
+[722,"Dhaka Uddan (Adabar)",23.7590,90.3419,"01821956223"],
+[981,"Dhakadakshin (Golapganj) Sylhet",24.8113,92.0349,"01334919482"],
+[789,"Dhamoirhat (Naogaon)",25.1511,88.8455,"01334919576"],
+[132,"Dhamrai",23.9088,90.2194,"01324762871"],
+[739,"Dhanbari (Tangail)",24.6687,89.9560,"01332846400"],
+[1,"Dhanmondi",23.7371,90.3675,"01321230764, 09678045045"],
+[633,"Dhobaura (Mymensingh)",25.0822,90.5147,"01332567031"],
+[736,"Dhunat (Bogura)",24.6893,89.5369,"01332567015"],
+[324,"Dhupchanchia (Bogura)",24.8722,89.1802,"01329683138"],
+[774,"Dighinala (Khagrachari)",23.2385,92.0663,"01612976694"],
+[856,"Digholia (Khulna)",22.8856,89.5338,"01332846448"],
+[937,"Digpait (Jamalpur)",24.8152,89.8138,"01334919571"],
+[585,"Dimla (Nilphamari)",26.1472,88.9215,"01334766072"],
+[52,"Dinajpur",25.6150,88.6541,"01322889475"],
+[817,"Dinajpur Bazar",25.6352,88.6372,"01332843413"],
+[92,"Dohar Nawabganj",23.6605,90.1532,"01321230783"],
+[260,"Domar (Nilphamari)",26.1100,88.8300,"01329-671818"],
+[689,"Doulotpur (Kushtia)",24.0014,88.8779,"01332567077"],
+[577,"Dowarabazar (Sunamganj)",25.0411,91.5678,"01332567053"],
+[897,"Dulahazara (Chakaria)",21.6574,92.0759,"01332846405"],
+[904,"Dularhat (Charfesson) Bhola",22.2822,90.7969,"01332846457"],
+[641,"Dumki (Patuakhali)",22.4649,90.3761,"01332846552"],
+[377,"Dumuria (Khulna)",22.8113,89.4073,"01329-642909"],
+[409,"Durgapur (Netrokona)",25.1216,90.6782,"01329642938"],
+[723,"Durgapur (Rajshahi)",24.4507,88.7606,"01332567004"],
+[330,"Eidgaon (Cox's Bazar)",21.5512,92.0674,"01329671834"],
+[1015,"Eidgor (Ramu) Cox's Bazar",21.5725,92.1419,"01334919493"],
+[968,"Elenga Kalihati (Tangail)",24.3335,89.9383,"01334919501"],
+[951,"Elephant Road",23.7361,90.3865,"01334919551"],
+[433,"Fakirhat (Bagerhat)",22.7707,89.7094,"01332567062"],
+[131,"Faridganj Hub",23.1319,90.7392,"01324-762863"],
+[54,"Faridpur",23.5947,89.8175,"01321230717"],
+[829,"Faridpur (Alipur)",23.6028,89.8309,"01332843426"],
+[331,"Fatikchari (CTG)",22.6835,91.8019,"01329683190"],
+[365,"Fatulla (Narayanganj)",23.6395,90.4956,"01329683193"],
+[326,"Fenchuganj (Sylhet)",24.6890,91.9513,"01322931865"],
+[49,"Feni",23.0172,91.3843,"01321230712"],
+[333,"Fleet Management",23.7352,90.3281,"01322-889474"],
+[996,"Foridpur (Pabna)",24.1578,89.4500,"01334930517"],
+[285,"Fulbari (Dinajpur)",25.5000,88.9500,"01329671816"],
+[310,"Fulbaria (Mymensingh)",24.6800,90.4100,"01329683139"],
+[852,"Fulchari (Gaibandha)",25.2752,89.5813,"01332846525"],
+[14,"Fulfillment Warehouse",23.7358,90.3286,"01322-889476"],
+[234,"Fulgazi (Feni)",23.1506,91.4323,"01329642937"],
+[262,"Gabindaganj (Gaibandha)",25.1300,89.3900,"01329671820"],
+[190,"Gabindaganj (Sunamganj)",24.9289,91.6964,"01324762914"],
+[1018,"Gabindaganj (Thana Road)",25.1372,89.3848,"01334919447"],
+[676,"Gabtali (Bogura)",24.8774,89.4393,"01334766000"],
+[227,"Gafargaon (Mymensingh)",24.4482,90.5471,"01322931855"],
+[118,"Gaibandha",25.3271,89.5288,"01334766043"],
+[314,"Galachipa (Patuakhali)",22.1719,90.4072,"01329683145"],
+[600,"Gangachara (Rangpur)",25.8537,89.2216,"01332567090"],
+[315,"Gangni (Meherpur)",23.8219,88.7517,"01322931864"],
+[800,"Garjania (Ramu)",21.4292,92.1754,"01332846412"],
+[893,"Gauchia (Narayanganj)",23.7873,90.5670,"01332846564"],
+[222,"Gazaria (Munshiganj)",23.5552,90.6508,"01329642948"],
+[122,"Gazipur",24.0022,90.3817,"01321230778"],
+[834,"Gazipur Chowrasta",23.9916,90.3931,"01332843431"],
+[139,"Ghatail (Tangail)",24.4600,89.8700,"01334919460"],
+[428,"Ghior (Manikganj)",23.8918,89.8777,"01329642949"],
+[698,"Ghoraghat (Dinajpur)",25.2939,89.2247,"01334766051"],
+[460,"Goalanda Hub (Rajbari)",23.7286,89.7572,"01329642906"],
+[916,"Goalanda More Rajbari",23.6809,89.7010,"01332846427"],
+[308,"Godagari (Rajshahi)",23.7104,90.4071,"01329683141"],
+[195,"Golapganj (Sylhet)",24.8510,92.0204,"01324762913"],
+[763,"Gollamari (Khulna)",22.8010,89.5459,"01332567070"],
+[72,"Gopalganj",23.0188,89.8380,"01321230740"],
+[835,"Gopalganj (B.B Road)",23.0142,89.8326,"01332843432"],
+[740,"Gopalpur (Tangail)",24.5688,89.9256,"01334766018"],
+[791,"Gorakghata (Moheshkhali)",21.5199,91.9666,"01332846410"],
+[851,"Goriarpar (Barishal)",22.7533,90.3031,"01332846515"],
+[436,"Gosairhat (Shariatpur)",23.0630,90.4344,"01329642922"],
+[24,"Gouripur (Cumilla)",23.5313,90.7811,"01321230747"],
+[672,"Gouripur (Mymensingh)",24.7515,90.5731,"01332567038"],
+[193,"Gournadi (Barishal)",22.9715,90.2219,"01329642997"],
+[753,"Gowainghat (Sylhet)",25.0958,91.9771,"01332567021"],
+[218,"Guimara (Khagrachari)",22.9625,91.8723,"01332567032"],
+[230,"Gulistan",23.7202,90.4090,"01324762947, 09678045016"],
+[6,"Gulshan",23.8083,90.4222,"01322-889452"],
+[564,"Gurudaspur (Natore)",24.3689,89.2465,"01332567006"],
+[66,"Habiganj",24.3561,91.4219,"01321230729"],
+[833,"Habiganj Bypass Road",24.3832,91.4081,"01332843430"],
+[320,"Haimchar (Chandpur)",23.0949,90.6651,"01329642931"],
+[96,"Hajiganj (Chandpur)",23.2505,90.8365,"01321230776"],
+[771,"Hakimpur (Dinajpur)",25.2767,89.0115,"01334766059"],
+[404,"Halishahar (CTG)",22.3539,91.7854,"01329683142"],
+[263,"Haluaghat (Mymensingh)",22.9242,89.8066,"01329671827"],
+[721,"Harinakunda (Jhenaidah)",23.6629,89.0534,"01332567068"],
+[873,"Haripur (Thakurgaon)",25.8233,88.1370,"01332846523"],
+[305,"Harirampur (Manikganj)",23.7636,90.0197,"01329683180"],
+[841,"Hasnabad (Keraniganj)",23.6783,90.4290,"01332843401"],
+[913,"Hatgopalpur (Jhenaidah)",23.5262,89.3001,"01332846425"],
+[34,"Hathazari",22.4928,91.8072,"01321-230757"],
+[754,"Hatibandha (Lalmonirhat)",26.1377,89.1365,"01334766070"],
+[185,"Hatiya (Noakhali)",22.3007,91.1398,"01324762923"],
+[206,"Hemayetpur",23.7974,90.2883,"01324762958"],
+[692,"Hizla (Barishal)",22.6040,89.3105,"01332567044"],
+[184,"Homna (Cumilla)",23.6842,90.7907,"01324762924"],
+[701,"Hossainpur (Kishoreganj)",24.4144,90.6526,"01332567033"],
+[730,"Inderhat Hub, Swarupkathi",22.7508,90.0862,"01334766027"],
+[129,"Ishwardi (Pabna)",24.1244,89.0746,"01324762960"],
+[306,"Ishwarganj (Mymensingh)",24.6900,90.5900,"01329683181"],
+[714,"Islampur (Jamalpur)",25.0806,89.7949,"01334766045"],
+[932,"Itna (Kishoreganj)",24.4600,90.8400,"01334919572"],
+[209,"Jagannathpur (Sunamganj)",24.7694,91.5537,"01322931857"],
+[979,"Jahapur (Muradnagar) Cumilla",23.6218,90.8681,"01334930506"],
+[179,"Jaintiapur (Sylhet)",25.1377,92.1209,"01324762936"],
+[445,"Jaldhaka (Nilphamari)",26.0171,87.0189,"01334766073"],
+[313,"Jamalganj (Sunamganj)",24.9965,91.2313,"01329683146"],
+[63,"Jamalpur",24.9221,89.9453,"01321230726"],
+[946,"Jamalpur Shorting Center",24.9213,89.9411,"01334919472"],
+[887,"Jamidarhat (Begumganj), Noakhali",22.9499,91.1701,"01332846404"],
+[974,"Jamirta, Singair (Manikganj)",23.7879,90.2209,"01334919490"],
+[896,"Jashore (Khaldar Road)",23.1669,89.2180,"01332843410"],
+[43,"Jashore Sadar",23.1778,89.2155,"01321230715"],
+[881,"Jashore Warehouse",23.1829,89.2182,"01332846452"],
+[7,"Jatrabari",23.7031,90.4405,"01322889447"],
+[872,"Jatrabari (Bibir Bagicha)",23.7105,90.4359,"01332843409"],
+[975,"Jauabazar (Chatok) Sunamganj",24.9264,91.5550,"01334919486"],
+[803,"Jhalokathi (Bisso Road)",22.6502,90.2016,"01334766086"],
+[120,"Jhalokati",22.6503,90.2017,"01321-230790"],
+[74,"Jhenaidah",23.5436,89.1809,"01321230730"],
+[818,"Jhenaidah Bus Stand",23.5436,89.1809,"01332843414"],
+[847,"Jhenaigati (Sherpur)",25.1828,90.0700,"01332846419"],
+[482,"Jibannagar (Chuadanga)",23.4184,88.8325,"01329-642911"],
+[297,"Jikhargacha (Jashore)",23.1051,89.0992,"01329683144"],
+[101,"Joypurhat",25.1056,89.0274,"01321230755"],
+[325,"Juri (Moulvibazar)",24.5986,92.1153,"01332567080"],
+[304,"Kabirhat (Noakhali)",22.8357,91.1981,"01329671826"],
+[1000,"Kachakata (Kurigram)",26.0102,89.7823,"01334930525"],
+[859,"Kachua (Bagerhat)",22.6507,89.8858,"01332846456"],
+[173,"Kachua (Chandpur)",23.3410,90.8915,"01324762887"],
+[210,"Kadamtali",23.6833,90.4599,"01324762906"],
+[356,"Kafrul",23.8090,90.3748,"01329683108"],
+[781,"Kahalo (Bogura)",24.8393,89.2680,"01334766036"],
+[743,"Kaharol (Dinajpur)",25.7950,88.5948,"01334766058"],
+[166,"Kalabagan",23.7488,90.3910,"01324762873"],
+[737,"Kalai (Joypurhat)",25.0647,89.1724,"01332567019"],
+[191,"Kalapara (Patuakhali)",21.9879,90.2274,"01324762942"],
+[380,"Kalaroa (Satkhira)",22.8613,89.0342,"01322931870"],
+[319,"Kalia (Narail)",23.0405,89.6360,"01332567073"],
+[126,"Kaliganj (Gazipur)",23.9239,90.5593,"01324762961"],
+[259,"Kaliganj (Jhenaidah)",23.4132,89.1341,"01329671831"],
+[216,"Kaliganj (Lalmonirhat)",25.9692,89.2209,"01322931846"],
+[201,"Kaliganj (Satkhira)",22.4639,89.0344,"01324762882"],
+[203,"Kalihati (Tangail)",24.3857,89.9985,"01329671805"],
+[862,"Kalisuri (Patuakhali)",22.5218,90.5210,"01332846558"],
+[223,"Kalkini (Madaripur)",23.0822,90.2298,"01332567037"],
+[472,"Kalmakanda (Netrokona)",24.9496,90.6166,"01329642936"],
+[681,"Kalukhali Hub (Rajbari)",23.7634,89.4968,"01329642950"],
+[242,"Kamalganj (Moulvibazar)",24.3547,91.8536,"01332567060"],
+[289,"Kamalnagar (Laxmipur)",22.7319,90.8725,"01329671843"],
+[777,"Kamarkhanda (Sirajganj)",24.3636,89.6470,"01334766034"],
+[50,"Kamrangirchar",23.7152,90.3619,"01321230734"],
+[950,"Kamrangirchar (Khalifa Ghat)",23.7175,90.3725,"01334919553"],
+[322,"Kanaighat (Sylhet)",25.0073,92.2560,"01334766044"],
+[22,"Kanchpur Hub",23.6912,90.5136,"01322889465"],
+[772,"Kandirpar (Cumilla)",23.4720,91.1730,"01329642990"],
+[134,"Kapasia (Gazipur)",24.1082,90.5705,"01324-762864"],
+[612,"Kaptai (Rangamati)",22.5034,92.1386,"01332846414"],
+[502,"Karimganj (Kishoreganj)",24.4596,90.8736,"01329-642903"],
+[272,"Karnafuli (CTG)",22.2910,91.8723,"01329-671809"],
+[155,"Kasba (B Baria)",23.7542,91.1508,"01324762890"],
+[237,"Kashiani (Gopalganj)",23.2337,89.7244,"01334766019"],
+[664,"Kathalia (Jhalokathi)",22.4050,90.1185,"01334766025"],
+[279,"Katiadi (Kishoreganj)",24.2483,90.8007,"01334766048"],
+[627,"Kaunia (Rangpur)",25.7686,89.4124,"01329642984"],
+[900,"Kawkhali (Rangamati), Ranirhat",22.5732,92.0444,"01332846408"],
+[713,"Kawkhali (Pirojpur)",22.6218,90.0637,"01334766022"],
+[498,"Kazipur (Sirajganj)",24.6386,89.6443,"01329642958"],
+[1004,"Kedarpur, Nagarpur (Tangail)",24.0403,89.9655,"01334919456"],
+[561,"Kendua (Netrokona)",24.6622,90.8386,"01329642925"],
+[21,"Keraniganj",23.7011,90.3870,"01322889457"],
+[819,"Keraniganj (Aganagar Road)",23.7053,90.4048,"01332843415"],
+[81,"Keranihat (CTG)",22.0929,92.0750,"01321-230791"],
+[696,"Keshabpur (Jashore)",22.9072,89.2222,"01332567072"],
+[85,"Khagrachari",23.1054,91.9862,"01321-230770"],
+[921,"Khaliajuri (Netrokona)",23.7797,90.4004,"01334919573"],
+[889,"Khalifarhat (Noakhali)",22.8351,91.0260,"01332846403"],
+[878,"Khalispur (Khulna)",22.8624,89.5309,"01332846566"],
+[729,"Khansama (Dinajpur)",25.8679,88.7820,"01334766041"],
+[992,"Khatunganj (CTG)",22.3372,91.8441,"01334919410"],
+[901,"Khetlal (Joypurhat)",23.7277,90.4135,"01332846453"],
+[4,"Khilgaon",23.7469,90.4453,"01322-889448"],
+[867,"Khoksha (Kushtia)",23.8100,89.2789,"01332846455"],
+[805,"Khulna (Rail Gate)",22.8199,89.5586,"01334766088"],
+[912,"Khulna (Warehouse)",22.7989,89.5277,"01334919566"],
+[26,"Khulna Hub",22.8316,89.5327,"01321230701"],
+[911,"Khulshi (CTG)",22.3604,91.8127,"01332846580"],
+[1030,"Khurushkul (Cox's Bazar)",21.4749,91.9922,"01334930546"],
+[64,"Kishoreganj",24.4586,90.7763,"01321230716"],
+[953,"Kishoreganj Shorting Center",24.4559,90.7609,"01334919462"],
+[759,"Kishorganj (Nilphamari)",25.9000,89.0100,"01334766071"],
+[41,"Kollayanpur",23.8011,90.3536,"01322889442"],
+[1028,"Konabari Gazipur",24.0105,90.3141,"01334930565"],
+[934,"Korotia (Tangail)",24.2235,89.9758,"01332846462"],
+[397,"Kotalipara (Gopalganj)",22.9915,89.9904,"01329642902"],
+[232,"Kotbari (Cumilla)",23.4720,91.1394,"01329683148"],
+[490,"Kotchandpur (Jhenaidah)",23.4129,89.0112,"01329-642928"],
+[317,"Kotwali (CTG)",22.3276,91.8309,"01329671808"],
+[868,"Koyra (Khulna)",22.7423,89.4109,"01332846450"],
+[962,"Krishnanagar (Nabinagar) B-Baria",23.9266,90.9958,"01334919468"],
+[508,"Kuakata (Patuakhali)",21.8419,90.1255,"01332846555"],
+[157,"Kulaura (Moulvibazar)",24.5341,92.0415,"01324762879"],
+[749,"Kuliarchar (Kishoreganj)",24.1592,90.9313,"01332567036"],
+[265,"Kumarkhali (Kushtia)",23.8550,89.2393,"01329671824"],
+[124,"KunjerHat Bhola",23.6323,90.1874,"01324762962"],
+[113,"Kurigram",25.8076,89.6213,"01321230771"],
+[936,"Kurigram (Majida College Road)",25.8151,89.6509,"01332846463"],
+[69,"Kushtia",23.9109,89.1267,"01321230725"],
+[824,"Kushtia (Syed Ahmed Road)",23.9109,89.1245,"01332843420"],
+[604,"Kutubdia (Cox's Bazar)",21.8170,91.8537,"01329642953"],
+[793,"Lakhai (Habiganj)",24.3108,91.3028,"01334766017"],
+[38,"Laksam Cumilla",23.2595,91.1188,"01321230797"],
+[177,"Lalmai (Cumilla)",23.3700,91.1500,"01806804935"],
+[287,"Lalmohon (Bhola)",22.3381,90.7378,"01329671846"],
+[127,"Lalmonirhat",25.9095,89.4328,"01321230787"],
+[779,"Lalpur (Natore)",24.1835,88.9736,"01334766031"],
+[344,"Lama (Bandarban)",21.7774,92.1940,"01329-683128"],
+[1034,"Langadu (Rangamati)",22.9822,92.2070,"09678 045 045"],
+[65,"Laxmipur",22.9416,90.8300,"01324762872"],
+[552,"Link Road (Cox's Bazar)",21.4244,92.0166,"01329-642939"],
+[214,"Lohagara (CTG)",22.0080,92.1011,"01334766064"],
+[254,"Lohagara (Narail)",23.1862,89.6573,"01329-671833"],
+[249,"Louhajang (Munshiganj)",23.4711,90.3440,"01329671835"],
+[393,"Madan (Netrokona)",24.7180,90.9510,"01329642929"],
+[864,"Madanpur (Narayanganj)",23.6895,90.5456,"01332843421"],
+[290,"Madarganj (Jamalpur)",24.9107,89.7233,"01329683199"],
+[73,"Madaripur",23.1672,90.1950,"01321230743"],
+[298,"Madhabdi (Narsingdi)",23.8470,90.6718,"01329683188"],
+[136,"Madhabpur (Habiganj)",24.1028,91.2987,"01324762865"],
+[98,"Magura",23.4899,89.4100,"01321230767"],
+[982,"Maijdee Bazar (Noakhali)",22.8874,91.0966,"01334919477"],
+[956,"Malibag Dhaka",23.7523,90.4158,"01334919554"],
+[892,"Malitola Dhaka",23.7164,90.4089,"01332846565"],
+[309,"Manda (Naogaon)",24.7632,88.7088,"01329683122"],
+[1027,"Manikchhari (Khagrachari)",22.8425,91.8365,"01878371974"],
+[61,"Manikganj",23.8756,89.9936,"01321230713"],
+[1019,"Manikganj (Beutha Road)",23.8573,90.0010,"01334919404"],
+[233,"Manoharganj (Cumilla)",23.3522,91.0592,"01329642947"],
+[907,"Markuli (Nabiganj) Habiganj",24.6892,91.3821,"01332846459"],
+[274,"Mathbaria (Pirojpur)",22.2936,89.9546,"01329-671821"],
+[783,"Matiranga (Khagrachari)",23.0384,91.8724,"01577699590"],
+[178,"Matlab Dakshin (Chandpur)",23.3432,90.7061,"01324762900"],
+[266,"Matlab Uttar (Chandpur)",23.6166,90.6166,"01611886470"],
+[106,"Mawna (Gazipur)",24.2117,90.4166,"01321230756"],
+[948,"Mawna Chowrasta",24.2143,90.4156,"01334919552"],
+[303,"Meghna (Cumilla)",23.6366,90.7100,"01329671814"],
+[468,"Mehendiganj (Barishal)",22.8162,90.5281,"01332567045"],
+[125,"Meherpur Hub",23.7722,88.6419,"01321-230788"],
+[470,"Melandah (Jamalpur)",24.9800,89.8300,"01329642935"],
+[926,"Memberbari (Gazipur)",24.1571,90.4314,"01332846547"],
+[799,"Metanghar (Muradnagar) Cumilla",23.7700,91.0000,"01334766007"],
+[37,"Mirkadim (Munshiganj)",23.5467,90.4962,"01321230707"],
+[2,"Mirpur",23.7988,90.3616,"01322-889443"],
+[494,"Mirpur (Kushtia)",23.9318,89.0079,"01329642900"],
+[827,"Mirpur 11",23.8154,90.3640,"01332843424"],
+[746,"Mirpur Warehouse",23.7850,90.3484,"01332567098"],
+[156,"Mirsharai (CTG)",22.7725,91.5742,"01324762950"],
+[637,"Mirzagonj (Patuakhali)",22.3625,90.2109,"01332846554"],
+[154,"Mirzapur (Tangail)",24.1031,90.0987,"01324762895"],
+[811,"Mithamain (Kishoreganj)",24.4144,91.0474,"01334766006"],
+[153,"Mithapukur (Rangpur)",25.5686,89.2748,"01324762935"],
+[295,"Modhukhali (Faridpur)",23.5418,89.6351,"01329642917"],
+[196,"Modhupur (Tangail)",24.6106,90.0333,"01324762930"],
+[724,"Modina Market (Sylhet)",24.9105,91.8563,"01332567056"],
+[97,"Mogbazar",23.7568,90.4210,"01321-230735"],
+[954,"Moglabazar (Sylhet)",24.8069,91.9134,"01334919466"],
+[417,"Mohadevpur (Naogaon)",24.9196,88.7523,"01329683120"],
+[11,"Mohammadpur",23.7471,90.3519,"01322-889441"],
+[456,"Mohammadpur (Magura)",23.3989,89.5945,"01329642916"],
+[202,"Mohanganj (Netrokona)",24.8725,90.9833,"01324762919"],
+[213,"Moheshpur (Jhenaidah)",23.3609,88.9238,"01322931852"],
+[236,"Moheskhali (Cox's Bazar)",21.6257,91.9235,"01329642959"],
+[952,"Mohipal (Feni)",23.0094,91.3762,"01334919463"],
+[181,"Mohonpur (Rajshahi)",24.5911,88.6591,"01334919502"],
+[220,"Mokshedpur (Gopalganj)",23.3196,89.8661,"01329642956"],
+[855,"Mollarhat (Bagerhat)",22.9242,89.8067,"01332846444"],
+[144,"Mongla (Bagerhat)",22.4770,89.6117,"01324-762898"],
+[211,"Monirampur (Jashore)",23.0295,89.2330,"01322931845"],
+[572,"Monohardi (Narsingdi)",24.1358,90.7030,"01332567050"],
+[751,"Monpura (Bhola)",22.2581,90.9670,"01334766029"],
+[188,"Morrelganj (Bagerhat)",22.4675,89.8625,"01324762957"],
+[17,"Motijheel",23.7306,90.4170,"01322-889449"],
+[879,"Motijheel (Dilkusha)",23.7267,90.4182,"01332846563"],
+[53,"Moulvibazar",24.4737,91.7707,"01321230723"],
+[773,"Moulvibazar Warehouse",24.4750,91.7777,"01334766015"],
+[1029,"Mudafargonj (Cumilla)",23.2672,91.0455,"01334930545"],
+[1003,"Mujgunni (Khulna)",22.8493,89.5377,"01334930512"],
+[697,"Mujibnagar (Meherpur)",23.6614,88.6110,"01332567071"],
+[283,"Muktagacha (Mymensingh)",24.7651,90.2509,"01329642918"],
+[268,"Muladi (Barishal)",22.9138,90.4079,"01329-671829"],
+[920,"Munshiganj Sadar",23.5445,90.5410,"01332846424"],
+[159,"Muradnagar (Cumilla)",23.6331,90.9707,"01324762902"],
+[42,"Mymensingh",24.7306,90.4150,"01321230703"],
+[908,"Mymensingh (Bodor er More)",24.7516,90.4042,"01332567089"],
+[372,"Nabiganj (Habiganj)",24.5704,91.5325,"01332567048"],
+[161,"Nabinagar (B Baria)",23.8882,90.9606,"01324762940"],
+[734,"Nachole (Chapai)",24.7228,88.4225,"01332-567002"],
+[457,"Nagarkanda Hub (Faridpur)",23.4135,89.8911,"01329642915"],
+[261,"Nagarpur (Tangail)",24.0579,89.8744,"01329683124"],
+[219,"Nageshwari (Kurigram)",25.9834,89.6910,"01322931842"],
+[703,"Nakla Hub (Sherpur)",24.9776,90.1774,"01332567035"],
+[580,"Nalchity (Jhalokati)",22.6336,90.2737,"01334766026"],
+[861,"Naldanga (Natore)",24.4978,88.9543,"01332846529"],
+[376,"Nalitabari (Sherpur)",25.0938,90.1884,"01329642927"],
+[506,"Nandail (Mymensingh)",24.5763,90.6950,"01329642930"],
+[680,"Nandigram (Bogura)",24.6489,89.2563,"01332567001"],
+[725,"Nandina (Jamalpur)",24.8711,90.0279,"01334766046"],
+[175,"Nangalkot (Cumilla)",23.1668,91.1983,"01324762933"],
+[59,"Naogaon",24.8392,88.9245,"01321230731"],
+[989,"Naogaon Dayaler Mor",24.8213,88.9341,"01334919543"],
+[942,"Naragati (Narail)",23.0348,89.7267,"01334919570"],
+[121,"Narail",23.1723,89.5038,"01321230781"],
+[13,"Narayanganj",23.6225,90.4992,"01322889456"],
+[238,"Naria (Shariatpur)",23.3073,90.4075,"01322931844"],
+[45,"Narsingdi",23.9288,90.7082,"01321230714"],
+[1022,"Narsingdi Sadar",23.9286,90.7109,"01332846505"],
+[865,"Narsingdi Warehouse",23.9124,90.6895,"01332846531"],
+[332,"Nasirnagar (B Baria)",24.1910,91.1948,"01329683196"],
+[80,"Natore",24.4123,89.0023,"01321230727"],
+[832,"Natore (Horispur)",24.4108,89.0048,"01332843429"],
+[1016,"Natore Shorting Center",24.4124,89.0025,"01334930536"],
+[1005,"Natun Bazar (Barishal)",22.7094,90.3604,"01329642952"],
+[745,"Nawabganj (Dinajpur)",25.4184,89.0838,"01334766042"],
+[960,"Nawabpur (Chandina) Cumilla",23.4063,90.9259,"01334919569"],
+[927,"Nayanpur (Sreepur), Gazipur",24.2622,90.4063,"01332846503"],
+[311,"Nazirpur (Pirojpur)",22.7116,89.9749,"01329683131"],
+[87,"Netrokona",24.8719,90.7389,"01321230749"],
+[970,"Netrokona Shorting Center",24.8695,90.6936,"01334919491"],
+[71,"New Market",23.7338,90.3815,"01322889468"],
+[905,"New Market - New Supermarket Dhaka",23.7337,90.3820,"01332846589"],
+[352,"Nhila (Teknaf)",21.0102,92.2489,"01329683134"],
+[769,"Niamatpur (Naogaon)",24.8296,88.5718,"01332567018"],
+[1025,"Nijhum Dwip Sub Branch (Hatiya)",22.0624,91.0296,"01620182874"],
+[876,"Nikli (Kishoreganj)",24.3151,90.9315,"01332-846420"],
+[3,"Nikunja",23.8284,90.4185,"01322889453"],
+[140,"Nilphamari",25.9445,88.8629,"01321-230780"],
+[886,"Niltuli (Faridpur)",23.6066,89.8369,"01332846446"],
+[973,"Nimtola, Sirajdikhan (Munshiganj)",23.6100,90.3430,"01334919478"],
+[838,"Nitaiganj (Narayanganj)",23.6097,90.5026,"1332843434"],
+[47,"Noakhali Sadar",22.8443,91.0960,"01321230710"],
+[143,"Noapara (Jashore)",23.0400,89.3863,"01324762937"],
+[994,"Norshingpur (Sunamganj)",25.0996,91.6507,"01334919485"],
+[1021,"Notun Bazar Badda (Dhaka)",23.7991,90.4364,"01332846504"],
+[8,"Old Dhaka",23.7223,90.3989,"01322889445"],
+[205,"Osmaninagar (Sylhet)",24.7220,91.7508,"01324762917"],
+[243,"Oxygen (CTG)",22.3991,91.8271,"01322931862"],
+[700,"Paba (Rajshahi)",24.4659,88.6217,"01332567005"],
+[62,"Pabna",24.0147,89.2289,"01321230721"],
+[764,"Pabna Shorting Center",24.0307,89.2290,"01334930516"],
+[945,"Pagla (Gafargaon), Mymensingh",24.3331,90.5835,"01334919574"],
+[224,"Paikgacha (Khulna)",22.6040,89.3105,"01322931840"],
+[1017,"Paikgacha Sorol Bazar (Khulna)",22.6033,89.3091,"01334919422"],
+[807,"Paker Hat (Khansama)",25.8596,88.7819,"01334766090"],
+[405,"Pakundia (Kishoreganj)",24.3229,90.6738,"01329-642932"],
+[1011,"Palakhal (Kachua) Chandpur",23.3876,90.8564,"01334930509"],
+[316,"Palash (Narsingdi)",23.9801,90.6473,"01329683194"],
+[180,"Palashbari (Gaibandha)",25.2899,89.3503,"01324762885"],
+[19,"Pallabi",23.8199,90.3646,"01322889444"],
+[798,"Palongkhali (Ukhiya)",21.1450,92.1583,"01332846411"],
+[863,"Paltan (Akram Tower)",23.7342,90.4099,"01332843405"],
+[128,"Panchagarh",26.3374,88.5648,"01321-230789"],
+[836,"Panchagarh (Dhakkamara)",26.3273,88.5482,"01332843433"],
+[597,"Panchbibi (Joypurhat)",25.1902,89.0152,"01332567014"],
+[60,"Panchlaish (CTG)",22.3689,91.8297,"01322-889464"],
+[235,"Pangsha (Rajbari)",23.7841,89.4253,"01322931843"],
+[271,"Parbatipur (Dinajpur)",25.6600,88.9200,"01329-671847"],
+[711,"Parshuram (Feni)",23.2171,91.4457,"01332-846560"],
+[115,"Patenga Hub",22.2814,91.7846,"01321-230758"],
+[412,"Patgram (Lalmonirhat)",26.3464,89.0158,"01329642944"],
+[301,"Patharghata (Barguna)",22.0378,89.9690,"01329683195"],
+[91,"Patiya (CTG)",22.3068,91.9769,"01321230792"],
+[874,"Patkelghata (Satkhira)",22.7667,89.1613,"01332846451"],
+[169,"Patnitala (Naogaon)",25.0384,88.7597,"01324762889"],
+[88,"Patuakhali",22.3505,90.3170,"01321230728"],
+[802,"Patuakhali (Sher-e-Bangla Road)",22.3574,90.3393,"01334766085"],
+[1026,"Patuakhali Sadar West",22.3430,90.3167,"01334930531"],
+[341,"Pekua (Cox's Bazar)",21.8316,91.9704,"01329683126"],
+[794,"Phulbari (Kurigram)",25.9456,89.5534,"01334766038"],
+[183,"Phulpur (Mymensingh)",24.9449,90.3667,"01324762878"],
+[384,"Phultala (Khulna)",22.9625,89.4795,"01329-642910"],
+[629,"Pirgacha (Rangpur)",25.6558,89.4055,"01329642982"],
+[478,"Pirganj (Thakurgaon)",23.7341,90.3294,"01334766053"],
+[728,"Pirganj Hub (Rangpur)",25.4182,89.3190,"01334766062"],
+[95,"Pirojpur",22.5710,89.9745,"01321-230748"],
+[816,"Poradaha Old Bazar (Kushtia)",23.8633,89.0339,"01332843412"],
+[918,"Porsha (Naogaon)",25.0191,88.5292,"01332846440"],
+[162,"Purbachal",23.8380,90.4718,"01324-762953"],
+[593,"Purbadhala (Netrokona)",24.9374,90.6051,"01329642933"],
+[46,"Radhika (B Baria)",23.9009,91.1273,"01321230784"],
+[524,"Rahonpur (Chapainawabganj)",24.8111,88.3170,"01332567003"],
+[702,"Raiganj (Sirajganj)",24.5057,89.5289,"01332567011"],
+[163,"Raipur (Laxmipur)",23.0090,90.7710,"01324762952"],
+[278,"Raipura (Narsingdi)",23.9836,90.8798,"01329671838"],
+[413,"Rajapur (Jhalokati)",22.5900,90.1500,"01334766024"],
+[875,"Rajarhat (Kurigram)",25.7902,89.5427,"01332846526"],
+[107,"Rajbari",23.7531,89.6311,"01321230768"],
+[858,"Rajendrapur (Gazipur)",24.0766,90.3839,"01332843404"],
+[327,"Rajnagar (Moulvibazar)",24.5175,91.8601,"01332567059"],
+[917,"Rajpara (Rajshahi)",24.3828,88.5652,"01332846532"],
+[32,"Rajshahi",24.3794,88.5959,"01321230705"],
+[828,"Rajshahi College Road",24.3654,88.6034,"01332843425"],
+[853,"Rajshahi Sub Warehouse",24.4007,88.6322,"01332846536"],
+[244,"Ramganj (Laxmipur)",23.1089,90.8624,"01329671815"],
+[253,"Ramgati (Laxmipur)",22.6668,90.9106,"01329642919"],
+[512,"Rampal (Bagerhat)",22.6486,89.6329,"01332567064"],
+[56,"Rampura",23.7579,90.4478,"01604008601"],
+[164,"Ramu (Cox's Bazar)",21.4322,92.1038,"01324762927"],
+[752,"Rangabali (Patuakhali)",21.9745,90.4397,"01332846556"],
+[83,"Rangamati",22.6495,92.1840,"01321230741"],
+[18,"Rangpur Hub",25.7553,89.2318,"01321230711"],
+[1032,"Rangpur Regional Corporate Office",25.7571,89.2313,"09678045045"],
+[843,"Rangpur Warehouse",25.7553,89.2318,"01334766094"],
+[215,"Rangunia (CTG)",22.4623,92.0042,"01324762946"],
+[985,"Raniganj (Sunamganj)",24.7112,91.5389,"01334919484"],
+[480,"Raninagar (Naogaon)",24.7379,88.9689,"01332567009"],
+[806,"Ranirbandar Dinajpur",25.7742,88.7869,"01334766089"],
+[250,"Ranisankail (Thakurgaon)",25.8963,88.2587,"01329-671822"],
+[520,"Raozan (CTG)",22.5346,91.9024,"01329642942"],
+[939,"Riazuddin Bazar (CTG)",22.3329,91.8290,"01332846465"],
+[1013,"Robirbazar (Moulvibazar)",24.4555,91.9934,"01334919489"],
+[735,"Rowmari (Kurigram)",25.5806,89.8277,"01334766068"],
+[1014,"Rupasdi (Bancharampur) B-Baria",23.7668,90.8627,"01334930524"],
+[90,"Rupganj",23.7854,90.5541,"01321230724"],
+[668,"Rupsha (Khulna)",22.7943,89.6042,"01332567069"],
+[1008,"Sabalia (Tangail-2)",24.2600,89.9100,"01334930523"],
+[293,"Sadarpur (Faridpur)",23.2835,90.0138,"01329683133"],
+[710,"Sadullapur (Gaibandha)",25.3952,89.4665,"01334766055"],
+[885,"Safa (Mathbaria) Pirojpur",24.2700,90.1226,"01332846559"],
+[949,"Sagardighi, Ghatail (Tangail)",24.7189,90.6461,"01334919457"],
+[709,"Saghata (Gaibandha)",25.1685,89.5264,"01334766056"],
+[79,"Saidpur (Nilphamari)",25.7900,88.9100,"01321-230738"],
+[814,"Saidpur Bazar Road",25.7770,88.8900,"01334766091"],
+[158,"Sakhipur (Tangail)",24.3130,90.1699,"01324762915"],
+[738,"Salanga (Sirajganj)",24.4197,89.5086,"01334766076"],
+[720,"Saltha (Faridpur)",23.4367,89.7917,"01332567067"],
+[187,"Sandwip (CTG)",22.4810,91.4850,"01324762921"],
+[768,"Santhia (Pabna)",24.0560,89.5510,"01332567017"],
+[589,"Sapahar (Naogaon)",25.1242,88.5923,"01332567008"],
+[171,"Sarail (B Baria)",24.0596,91.1151,"01324762941"],
+[727,"Sarankhola (Bagerhat)",22.3205,89.8464,"01332567063"],
+[845,"Sariakandi (Bogura)",24.8905,89.5672,"01332846534"],
+[198,"Sarishabari (Jamalpur)",24.7747,89.8470,"01324762934"],
+[84,"Satkhira",22.7002,89.0669,"01321230750"],
+[809,"Satkhira Etagacha Road",22.6980,89.0631,"01334766093"],
+[280,"Saturia (Manikganj)",23.9676,90.0342,"01329671836"],
+[20,"Savar",23.8566,90.2590,"01322889458"],
+[967,"Savar Fleet Management",23.8116,90.2568,"01334919536"],
+[925,"Savar Warehouse",23.8111,90.2569,"01332846579"],
+[894,"Savar (Chowdhury Market)",23.8368,90.2584,"01332843408"],
+[256,"Senbag (Noakhali)",22.9870,91.2311,"01329671839"],
+[815,"Shah Ali Market (Mirpur-1)",23.7972,90.3505,"01332843411"],
+[821,"Shahajadpur (Dwaripur)",24.1752,89.5916,"01332843417"],
+[938,"Shaheb Bazar (Sylhet)",24.9800,91.9115,"01334930530"],
+[277,"Shahjadpur (Sirajganj)",24.1757,89.5885,"01329671819"],
+[138,"Shahporan (Sylhet)",24.9200,91.9500,"01324762868"],
+[229,"Shahrasti (Chandpur)",23.2463,90.9492,"01334766061"],
+[340,"Shailkupa (Jhenaidah)",23.6798,89.2426,"01329683125"],
+[361,"Shajahanpur (Bogura)",24.7552,89.3996,"01329642946"],
+[421,"Shakipur (Shariatpur)",23.2267,90.5331,"01329642923"],
+[588,"Shalikha (Magura)",23.3680,89.3742,"01329-642921"],
+[961,"Shalla (Sunamganj)",24.6686,91.2699,"01334919461"],
+[871,"Shambhuganj (Mymensingh)",24.7625,90.4428,"01334766021"],
+[995,"Shamlapur (Teknaf) Cox's Bazar",21.0796,92.1424,"01334919492"],
+[635,"Shantiganj (Sunamganj)",24.9299,91.4092,"01332567054"],
+[780,"Shantirhat (Patiya)-CTG",22.2974,91.8910,"01334766066"],
+[76,"Shariatpur",23.2315,90.3488,"01321230744"],
+[152,"Shayestaganj (Habiganj)",24.2743,91.4693,"01332567055"],
+[93,"Sherpur",24.9993,90.0139,"01321230754"],
+[225,"Sherpur (Bogura)",24.6655,89.4216,"01329642957"],
+[130,"Sherpur Moulvibazar",24.6348,91.6860,"01332567058"],
+[993,"Sherpur Shorting Center",24.9910,90.0347,"01334930543"],
+[186,"Shibchar (Madaripur)",23.3499,90.1622,"01324762931"],
+[264,"Shibganj (Bogura)",25.0010,89.3211,"01329671811"],
+[231,"Shibganj (Chapai)",24.6746,88.1558,"01334919580"],
+[767,"Shibpur (Brahmanbaria)",23.8700,91.0291,"01334766067"],
+[197,"Shibpur (Narsingdi)",24.0359,90.7360,"01324762901"],
+[329,"Shivalaya (Manikganj)",23.8469,89.8205,"01329642908"],
+[963,"Shyamganj (Netrokona)",24.8464,90.5735,"01334919471"],
+[869,"Shyamgram (Nabinagar) B Baria",23.8440,90.8943,"01332846528"],
+[302,"Shyamnagar (Satkhira)",22.3364,89.1059,"01329683123"],
+[898,"Signboard Hub (Narayanganj)",23.6913,90.4831,"09678 045 045"],
+[208,"Singair (Manikganj)",23.8128,90.1459,"01329642960"],
+[782,"Singra (Natore)",24.5003,89.1408,"01334766030"],
+[212,"Sirajdikhan (Munshiganj)",23.5749,90.3728,"01334766079"],
+[48,"Sirajganj",24.4469,89.7079,"01321230739"],
+[820,"Sirajganj (Sadar-Katiakuthi)",24.4492,89.7074,"01332843416"],
+[388,"Sirajganj Shorting Center",24.4395,89.7113,"01334930515"],
+[75,"Sitakunda (CTG)",22.6272,91.6544,"01321230746"],
+[182,"Sonagazi (Feni)",22.8483,91.3916,"01324762928"],
+[226,"Sonaimuri (Noakhali)",23.0369,91.1032,"01332846416"],
+[147,"Sonargaon (Narayanganj)",23.6379,90.5993,"01324-762876"],
+[792,"Sonarpara (Ukhiya)",21.2851,92.0567,"01332-846402"],
+[323,"Sonatola (Bogura)",25.0393,89.4990,"01329683149"],
+[748,"Soshivusion (Bhola)",22.1131,90.7105,"01334766028"],
+[133,"South Surma (Sylhet)",24.8650,91.8832,"01324762867"],
+[947,"Square Masterbari (Bhaluka), Mymensingh",24.2980,90.3843,"01334919474"],
+[706,"Sreebardi (Sherpur)",25.1524,89.9311,"01332567030"],
+[137,"Sreemangal (Moulvibazar)",24.3166,91.7345,"01332567049"],
+[103,"Sreenagar (Munshiganj)",23.5372,90.2824,"01321230777"],
+[425,"Sreepur (Magura)",23.5910,89.3965,"01329642913"],
+[826,"Suarighat (Chawkbazar)",23.7128,90.3963,"01332843423"],
+[245,"Subarnachar (Noakhali)",22.6356,91.1255,"01329671845"],
+[545,"Sujanagar (Pabna)",23.9452,89.4091,"01332567013"],
+[77,"Sunamganj",25.0588,91.3905,"01321230742"],
+[556,"Sundarganj (Gaibandha)",25.5595,89.5136,"01334766050"],
+[31,"Sutrapur",23.7049,90.4132,"01322-889446"],
+[840,"Swarupkathi (Bus Stand)",22.7527,90.0990,"01332843437"],
+[318,"Swarupkathi (Pirojpur)",22.7468,90.1064,"01329683191"],
+[23,"Sylhet",24.9011,91.8855,"01321230700"],
+[248,"Sylhet Warehouse",24.8703,91.8592,"01329-671800"],
+[288,"Tahirpur (Sunamganj)",25.1485,91.2270,"01329671844"],
+[516,"Tala (Satkhira)",22.7496,89.2585,"01329-642905"],
+[528,"Taltali Hub (Barguna)",21.9836,90.0849,"01334766008"],
+[44,"Tangail",24.2563,89.9193,"01334919459"],
+[933,"Tangail Old Bus Stand",24.2500,89.9232,"01332846461"],
+[930,"Tangail Shorting Center",24.1844,90.0001,"01332846428"],
+[757,"Tanore (Rajshahi)",24.5858,88.5752,"01334766075"],
+[810,"Taraganj (Rangpur)",25.8129,89.0105,"01332846549"],
+[778,"Tarail (Kishoreganj)",24.5560,90.8912,"01334766047"],
+[704,"Tarakanda (Mymensingh)",24.8679,90.4229,"01332567039"],
+[655,"Tarash (Sirajganj)",24.4324,89.3788,"01332567010"],
+[12,"Tejgaon",23.7695,90.4021,"01322889450"],
+[808,"Tekerhat Nesaruddin Market",23.2253,90.0198,"01334766092"],
+[252,"Tekerhat, Rajoir (Madaripur)",23.2238,90.0152,"01329671823"],
+[110,"Teknaf (Cox's Bazar)",20.8690,92.2927,"01321-230752"],
+[978,"Temukhi Point (Sylhet)",24.9182,91.8193,"01334930520"],
+[866,"Terokhada (Khulna)",22.9289,89.6637,"01332846443"],
+[657,"Tetulia (Panchagarh)",26.4915,88.3389,"01329642945"],
+[100,"Thakurgaon",26.0236,88.4721,"01321-230769"],
+[988,"Thakurgaon Muslim Nagar",26.0335,88.4838,"01334919499"],
+[958,"Time Bazar (Banskhali) CTG",21.9814,91.9557,"01334919467"],
+[760,"Titas (Cumilla)",23.6095,90.7968,"01332567026"],
+[29,"Tongi Hub",23.9138,90.4116,"01322889460"],
+[255,"Tongibari (Munshiganj)",23.5198,90.4626,"01329-671817"],
+[204,"Trishal (Mymensingh)",24.5727,90.4102,"01324762907"],
+[536,"Tungipara (Gopalganj)",22.8981,89.8890,"01329642920"],
+[360,"Turag",23.8743,90.3679,"01329683106"],
+[568,"Ujirpur (Barishal)",22.8338,90.2543,"01332567042"],
+[104,"Ukhiya (Cox's Bazar)",21.2367,92.1587,"01321-230751"],
+[617,"Ulipur (Kurigram)",25.6591,89.6127,"01334766037"],
+[150,"Ullapara (Sirajganj)",24.3074,89.5662,"01334930555"],
+[796,"Uposhahar (Sylhet)",24.8866,91.8846,"01334766016"],
+[10,"Uttara",23.8802,90.3958,"01322889454"],
+[919,"Uttara (Alaol Avenue)",23.8746,90.4043,"01332846568"],
+[776,"Uttara Warehouse",23.8772,90.4088,"01334766099"],
+[40,"Uttarkhan",23.8753,90.4278,"01322889455"],
+[257,"Zajira (Shariatpur)",23.3205,90.3242,"01329-671804"],
+[291,"Zakiganj (Sylhet)",24.9144,92.3674,"01329671813"],
+[957,"Zeropoint (Khulna)",22.7989,89.5277,"01334930513"],
+[726,"Zianagar (Pirojpur)",22.4812,89.9612,"01334766023"]
+];
+
+/* =====================================================================
+   MAP INIT
+   ===================================================================== */
+const hubs = HUBS.map(a => ({ id:a[0], name:a[1], lat:a[2], lng:a[3], phone:a[4]||'' }));
+
+const map = L.map('map', {
+  zoomControl:false,
+  preferCanvas:true,
+  worldCopyJump:true
+}).setView([23.8103, 90.4125], 7);
+
+/* 
+  HOT OSM টাইল ব্যবহার করা হয়েছে। 
+  এটি ওপেনস্ট্রিটম্যাপেরই একটি মিরর, যা লোকাল ফাইলে 403 ব্লক করে না 
+  এবং বাংলাদেশের জেলা, উপজেলা, সড়কের নাম খুব সুন্দরভাবে দেখায়। 
+*/
+const osmTiles = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  subdomains: 'abc',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/">HOT</a>'
+}).addTo(map);
+
+/* ডিফল্টভাবে লাইট থিম (যেমনটা স্ক্রিনশটে আছে), ক্লাস রিমুভ করা হলো */
+document.getElementById('map').classList.remove('map-dark');
+
+L.control.scale({position:'bottomright', imperial:false}).addTo(map);
+
+/* ---- marker icon ---- */
+const pinIcon = L.divIcon({
+  className:'hub-pin',
+  html:'<span></span>',
+  iconSize:[14,14],
+  iconAnchor:[7,7],
+  popupAnchor:[0,-9]
+});
+
+/* ---- cluster group ---- */
+const clusters = L.markerClusterGroup({
+  chunkedLoading:true,
+  maxClusterRadius:55,
+  spiderfyOnMaxZoom:true,
+  showCoverageOnHover:false,
+  removeOutsideVisibleBounds:true,
+  iconCreateFunction: c => {
+    const n = c.getChildCount();
+    const size = n < 10 ? 34 : n < 50 ? 40 : n < 200 ? 46 : 54;
+    return L.divIcon({
+      html:`<div class="cl">${n}</div>`,
+      className:'cluster-icon',
+      iconSize:[size,size]
+    });
+  }
+}).addTo(map);
+
+/* ---- helpers ---- */
+const esc = s => String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+function popupHTML(h){
+  const tel = (h.phone||'').replace(/[^\d+]/g,'');
+  return `
+  <div class="pop">
+    <span class="badge">HUB ID #${h.id}</span>
+    <h3>${esc(h.name)}</h3>
+    <div class="row"><i>📍</i><span class="coords">${h.lat.toFixed(4)}, ${h.lng.toFixed(4)}</span></div>
+    <div class="row"><i>📞</i><span>${tel ? `<a href="tel:${tel}">${esc(h.phone)}</a>` : '—'}</span></div>
+    <div class="actions">
+      <a class="btn" target="_blank" rel="noopener"
+         href="https://www.google.com/maps?q=${h.lat},${h.lng}">Google Maps ↗</a>
+      <button class="btn ghost" onclick="copyCoords(${h.lat},${h.lng},this)">Copy Coords</button>
+    </div>
+  </div>`;
+}
+
+window.copyCoords = function(lat,lng,btn){
+  const t = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  navigator.clipboard?.writeText(t).then(()=>{
+    const o = btn.textContent;
+    btn.textContent = '✓ Copied';
+    setTimeout(()=>btn.textContent = o, 1200);
+  });
+};
+
+/* ---- create markers ---- */
+const markerById = new Map();
+const activeId = { v:null };
+
+hubs.forEach(h => {
+  const m = L.marker([h.lat, h.lng], { icon:pinIcon, title:`#${h.id} · ${h.name}`, riseOnHover:true });
+  m.bindPopup(() => popupHTML(h), { maxWidth:300, minWidth:250, autoPanPadding:[30,30] });
+  m.on('click', () => setActive(h.id, false));
+  markerById.set(h.id, m);
+  clusters.addLayer(m);
+});
+
+/* =====================================================================
+   SIDEBAR LIST + SEARCH
+   ===================================================================== */
+const listEl   = document.getElementById('list');
+const qEl      = document.getElementById('q');
+const cTotalEl = document.getElementById('cTotal');
+const cShownEl = document.getElementById('cShown');
+
+cTotalEl.textContent = hubs.length;
+cShownEl.textContent = hubs.length;
+
+const LIMIT = 300;
+
+function renderList(items){
+  cShownEl.textContent = items.length;
+  if(!items.length){
+    listEl.innerHTML = '<div class="empty">কোনো হাব পাওয়া যায়নি 🔍</div>';
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  items.slice(0, LIMIT).forEach(h => {
+    const d = document.createElement('div');
+    d.className = 'item' + (h.id === activeId.v ? ' active' : '');
+    d.dataset.id = h.id;
+    d.innerHTML = `<div class="dot"></div>
+      <div>
+        <div class="t">${esc(h.name)}</div>
+        <div class="i">#${h.id} · ${h.lat.toFixed(3)}, ${h.lng.toFixed(3)}</div>
+      </div>`;
+    d.addEventListener('click', () => focusHub(h.id, true));
+    frag.appendChild(d);
+  });
+  listEl.innerHTML = '';
+  listEl.appendChild(frag);
+
+  if(items.length > LIMIT){
+    const more = document.createElement('div');
+    more.className = 'empty';
+    more.textContent = `আরও ${items.length - LIMIT} টি হাব আছে — সার্চ করে দেখুন`;
+    listEl.appendChild(more);
+  }
+}
+
+let searchTimer;
+qEl.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    const q = qEl.value.trim().toLowerCase();
+    const filtered = !q ? hubs : hubs.filter(h =>
+      h.name.toLowerCase().includes(q) ||
+      String(h.id).includes(q) ||
+      (h.phone||'').replace(/\s/g,'').includes(q.replace(/\s/g,''))
+    );
+    renderList(filtered);
+  }, 140);
+});
+
+/* =====================================================================
+   FOCUS / ACTIVE STATE
+   ===================================================================== */
+function setActive(id, scroll){
+  activeId.v = id;
+  document.querySelectorAll('.item').forEach(el => {
+    el.classList.toggle('active', Number(el.dataset.id) === id);
+  });
+  if(scroll){
+    const el = document.querySelector(`.item[data-id="${id}"]`);
+    el?.scrollIntoView({ block:'nearest', behavior:'smooth' });
+  }
+}
+
+function focusHub(id, fromList){
+  const h = hubs.find(x => x.id === id);
+  const m = markerById.get(id);
+  if(!h || !m) return;
+
+  setActive(id, true);
+
+  clusters.zoomToShowLayer(m, () => {
+    map.flyTo([h.lat, h.lng], Math.max(map.getZoom(), 14), { duration:0.8 });
+    setTimeout(() => m.openPopup(), 420);
+  });
+
+  if(window.innerWidth <= 860) document.getElementById('side').classList.remove('open');
+}
+
+/* =====================================================================
+   MAP BUTTONS
+   ===================================================================== */
+document.getElementById('btnFit').addEventListener('click', () => {
+  map.flyToBounds(clusters.getBounds(), { padding:[40,40], duration:1 });
+});
+document.getElementById('btnZoomIn').addEventListener('click', () => map.zoomIn());
+document.getElementById('btnZoomOut').addEventListener('click', () => map.zoomOut());
+
+/* Theme toggle — লাইট এবং ডার্ক মোডের মধ্যে সুইচ করে */
+let isDark = false; // ডিফল্ট লাইট মোড
+document.getElementById('btnTheme').addEventListener('click', e => {
+  isDark = !isDark;
+  document.getElementById('map').classList.toggle('map-dark', isDark);
+  e.currentTarget.textContent = isDark ? '☀' : '🌙';
+});
+
+document.getElementById('menuBtn').addEventListener('click', () => {
+  document.getElementById('side').classList.toggle('open');
+});
+
+/* =====================================================================
+   BOOT
+   ===================================================================== */
+renderList(hubs);
+setTimeout(() => map.flyToBounds(clusters.getBounds(), { padding:[40,40], duration:1.2 }), 350);
+</script>
+</body>
+</html>
