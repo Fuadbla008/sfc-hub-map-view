@@ -5,9 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Hub Map — Interactive Hub Locator</title>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<!-- বাংলা ফন্ট যুক্ত করা হলো -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;700&display=swap" rel="stylesheet">
+
+<!-- jsDelivr CDN ব্যবহার করা হলো, যা দ্রুত লোড হয় -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 
 <style>
   :root{
@@ -23,7 +29,7 @@
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
   body{
-    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Bengali',sans-serif;
+    font-family: 'Noto Sans Bengali', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background:var(--bg); color:var(--text); overflow:hidden;
   }
   #app{display:flex; height:100%;}
@@ -107,7 +113,7 @@
 
   /* ---------------- MAP ---------------- */
   #map{flex:1; height:100%; background:#05080f}
-  .leaflet-container{background:#05080f; font-family:inherit}
+  .leaflet-container{background:#05080f; font-family:'Noto Sans Bengali', sans-serif;}
 
   /* OSM লাইট ম্যাপ ডার্ক মোডে নেওয়ার ফিল্টার */
   #map.map-dark .leaflet-tile-pane{
@@ -140,6 +146,7 @@
     background:radial-gradient(circle at 30% 26%, rgba(167,139,250,.98), rgba(34,211,238,.92));
     border:1px solid rgba(255,255,255,.42);
     box-shadow:0 0 0 6px rgba(34,211,238,.11), 0 0 24px rgba(34,211,238,.5);
+    font-family:'Inter', sans-serif;
   }
 
   /* popup */
@@ -148,6 +155,7 @@
     color:var(--text); border-radius:16px; border:1px solid rgba(255,255,255,.13);
     box-shadow:0 22px 55px rgba(0,0,0,.7), 0 0 0 1px rgba(34,211,238,.16);
     padding:0;
+    font-family:'Noto Sans Bengali', sans-serif !important;
   }
   .leaflet-popup-content{margin:0; width:auto!important}
   .leaflet-popup-tip{background:#0b1322; border:1px solid rgba(255,255,255,.13)}
@@ -248,8 +256,8 @@
   </main>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
 <script>
 /* =====================================================================
@@ -1038,18 +1046,15 @@ const map = L.map('map', {
   worldCopyJump:true
 }).setView([23.8103, 90.4125], 7);
 
-/* 
-  HOT OSM টাইল ব্যবহার করা হয়েছে। 
-  এটি ওপেনস্ট্রিটম্যাপেরই একটি মিরর, যা লোকাল ফাইলে 403 ব্লক করে না 
-  এবং বাংলাদেশের জেলা, উপজেলা, সড়কের নাম খুব সুন্দরভাবে দেখায়। 
-*/
-const osmTiles = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+/* OSM টাইলস - পারফরম্যান্স অপ্টিমাইজ করা হলো */
+const osmTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
-  subdomains: 'abc',
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/">HOT</a>'
+  updateWhenIdle: true, // ম্যাপ মুভ করা শেষ হলে টাইল লোড হবে, যা দ্রুত রেসপন্স দেয়
+  keepBuffer: 4,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
 
-/* ডিফল্টভাবে লাইট থিম (যেমনটা স্ক্রিনশটে আছে), ক্লাস রিমুভ করা হলো */
+/* ডিফল্টভাবে লাইট থিম */
 document.getElementById('map').classList.remove('map-dark');
 
 L.control.scale({position:'bottomright', imperial:false}).addTo(map);
@@ -1065,11 +1070,13 @@ const pinIcon = L.divIcon({
 
 /* ---- cluster group ---- */
 const clusters = L.markerClusterGroup({
-  chunkedLoading:true,
-  maxClusterRadius:55,
-  spiderfyOnMaxZoom:true,
-  showCoverageOnHover:false,
-  removeOutsideVisibleBounds:true,
+  chunkedLoading: true,
+  chunkInterval: 100,  // দ্রুত চাঙ্ক লোড হবে
+  chunkDelay: 50,
+  maxClusterRadius: 55,
+  spiderfyOnMaxZoom: true,
+  showCoverageOnHover: false,
+  removeOutsideVisibleBounds: true,
   iconCreateFunction: c => {
     const n = c.getChildCount();
     const size = n < 10 ? 34 : n < 50 ? 40 : n < 200 ? 46 : 54;
@@ -1211,13 +1218,13 @@ function focusHub(id, fromList){
    MAP BUTTONS
    ===================================================================== */
 document.getElementById('btnFit').addEventListener('click', () => {
-  map.flyToBounds(clusters.getBounds(), { padding:[40,40], duration:1 });
+  map.fitBounds(clusters.getBounds(), { padding:[40,40], duration:0.5 });
 });
 document.getElementById('btnZoomIn').addEventListener('click', () => map.zoomIn());
 document.getElementById('btnZoomOut').addEventListener('click', () => map.zoomOut());
 
-/* Theme toggle — লাইট এবং ডার্ক মোডের মধ্যে সুইচ করে */
-let isDark = false; // ডিফল্ট লাইট মোড
+/* Theme toggle */
+let isDark = false;
 document.getElementById('btnTheme').addEventListener('click', e => {
   isDark = !isDark;
   document.getElementById('map').classList.toggle('map-dark', isDark);
@@ -1232,7 +1239,12 @@ document.getElementById('menuBtn').addEventListener('click', () => {
    BOOT
    ===================================================================== */
 renderList(hubs);
-setTimeout(() => map.flyToBounds(clusters.getBounds(), { padding:[40,40], duration:1.2 }), 350);
+
+/* 
+  flyToBounds এর বদলে fitBounds ব্যবহার করা হলো যা অ্যানিমেশন ছাড়া 
+  সাথে সাথেই ম্যাপকে ফিট করে ফেলে (লোড টাইম কমাতে সাহায্য করে) 
+*/
+setTimeout(() => map.fitBounds(clusters.getBounds(), { padding:[40,40] }), 100);
 </script>
 </body>
 </html>
