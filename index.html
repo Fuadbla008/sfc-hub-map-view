@@ -5,12 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Hub Map — Interactive Hub Locator</title>
 
-<!-- বাংলা ফন্ট যুক্ত করা হলো -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;700&display=swap" rel="stylesheet">
 
-<!-- jsDelivr CDN ব্যবহার করা হলো, যা দ্রুত লোড হয় -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
@@ -34,7 +32,6 @@
   }
   #app{display:flex; height:100%;}
 
-  /* ---------------- SIDEBAR ---------------- */
   #side{
     width:350px; flex:0 0 350px; display:flex; flex-direction:column;
     background:linear-gradient(180deg,#0d1526 0%,#080d18 100%);
@@ -96,6 +93,10 @@
     background:linear-gradient(90deg,rgba(34,211,238,.16),rgba(167,139,250,.09));
     border-color:rgba(34,211,238,.45);
   }
+  .item.no-loc .dot{
+    background:#64748b;
+    box-shadow:0 0 8px rgba(100,116,139,.5);
+  }
   .dot{
     width:9px;height:9px;border-radius:50%;flex:0 0 9px;
     background:linear-gradient(135deg,var(--accent),var(--accent2));
@@ -111,11 +112,9 @@
     border-top:1px solid var(--line); text-align:center; letter-spacing:.3px;
   }
 
-  /* ---------------- MAP ---------------- */
   #map{flex:1; height:100%; background:#05080f}
   .leaflet-container{background:#05080f; font-family:'Noto Sans Bengali', sans-serif;}
 
-  /* OSM লাইট ম্যাপ ডার্ক মোডে নেওয়ার ফিল্টার */
   #map.map-dark .leaflet-tile-pane{
     filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(1.1) saturate(0.8);
   }
@@ -128,7 +127,6 @@
     background: rgba(10,16,28,.75); color:#9fb0c8; border-color:#334155;
   }
 
-  /* pin */
   .hub-pin{background:none!important; border:none!important}
   .hub-pin span{
     display:block; width:14px; height:14px; border-radius:50%;
@@ -138,7 +136,6 @@
   }
   .hub-pin:hover span{transform:scale(1.45)}
 
-  /* clusters */
   .cluster-icon{background:none!important;border:none!important}
   .cl{
     width:100%;height:100%;border-radius:50%;display:grid;place-items:center;
@@ -149,7 +146,6 @@
     font-family:'Inter', sans-serif;
   }
 
-  /* popup */
   .leaflet-popup-content-wrapper{
     background:linear-gradient(180deg,#111c31,#0b1322);
     color:var(--text); border-radius:16px; border:1px solid rgba(255,255,255,.13);
@@ -189,7 +185,6 @@
     border:1px solid rgba(255,255,255,.15);
   }
 
-  /* map floating buttons */
   .mapbtns{position:absolute; right:14px; top:14px; z-index:1000; display:flex; flex-direction:column; gap:8px}
   .mbtn{
     width:40px; height:40px; border-radius:12px; cursor:pointer;
@@ -200,7 +195,6 @@
   }
   .mbtn:hover{border-color:rgba(34,211,238,.6); color:var(--accent); box-shadow:0 0 16px rgba(34,211,238,.3)}
 
-  /* mobile */
   #menuBtn{display:none}
   @media (max-width:860px){
     #side{
@@ -701,7 +695,7 @@ const HUBS = [
   [157, "Kulaura (Moulvibazar)", 24.5341180, 92.0414940, "1324762879"],
   [749, "Kuliarchar (Kishoreganj)", 24.1592100, 90.9313460, "1332567036"],
   [265, "Kumarkhali (Kushtia)", 23.8550140, 89.2393470, "1329671824"],
-  [124, "KunjerHat Bhola", 22.4278390, 90.7691100, "1324762962"],
+  [124, "KunjerHat Bhola", 22.4278390, 90.7701100, "1324762962"],
   [113, "Kurigram", 25.8143590, 89.6405820, "1321230771"],
   [936, "Kurigram (Majida College Road)", 25.8151090, 89.6508890, "1332846463"],
   [69, "Kushtia", 23.9109480, 89.1267270, "1321230725"],
@@ -1063,7 +1057,13 @@ const HUBS = [
 /* =====================================================================
    MAP INIT
    ===================================================================== */
+// ✅ FIX: সমস্ত হাব আলাদা রাখা হয়েছে (list-এ সব দেখাবে)
 const hubs = HUBS.map(a => ({ id:a[0], name:a[1], lat:a[2], lng:a[3], phone:a[4]||'' }));
+
+// ✅ FIX: যেসব হাবের lat/lng সংখ্যা আছে তাদের আলাদা করা (marker-এ শুধু এগুলো)
+const hasCoords = h => typeof h.lat === 'number' && typeof h.lng === 'number' && !isNaN(h.lat) && !isNaN(h.lng);
+const locatedHubs = hubs.filter(hasCoords);
+const missingCoordsCount = hubs.length - locatedHubs.length;
 
 const map = L.map('map', {
   zoomControl:false,
@@ -1071,20 +1071,16 @@ const map = L.map('map', {
   worldCopyJump:true
 }).setView([23.8103, 90.4125], 7);
 
-/* OSM টাইলস - পারফরম্যান্স অপ্টিমাইজ করা হলো */
 const osmTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
-  updateWhenIdle: true, // ম্যাপ মুভ করা শেষ হলে টাইল লোড হবে, যা দ্রুত রেসপন্স দেয়
+  updateWhenIdle: true,
   keepBuffer: 4,
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
 
-/* ডিফল্টভাবে লাইট থিম */
 document.getElementById('map').classList.remove('map-dark');
-
 L.control.scale({position:'bottomright', imperial:false}).addTo(map);
 
-/* ---- marker icon ---- */
 const pinIcon = L.divIcon({
   className:'hub-pin',
   html:'<span></span>',
@@ -1093,10 +1089,9 @@ const pinIcon = L.divIcon({
   popupAnchor:[0,-9]
 });
 
-/* ---- cluster group ---- */
 const clusters = L.markerClusterGroup({
   chunkedLoading: true,
-  chunkInterval: 100,  // দ্রুত চাঙ্ক লোড হবে
+  chunkInterval: 100,
   chunkDelay: 50,
   maxClusterRadius: 55,
   spiderfyOnMaxZoom: true,
@@ -1113,7 +1108,6 @@ const clusters = L.markerClusterGroup({
   }
 }).addTo(map);
 
-/* ---- helpers ---- */
 const esc = s => String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
 function popupHTML(h){
@@ -1141,11 +1135,11 @@ window.copyCoords = function(lat,lng,btn){
   });
 };
 
-/* ---- create markers ---- */
+/* ---- create markers (শুধু locatedHubs) ---- */
 const markerById = new Map();
 const activeId = { v:null };
 
-hubs.forEach(h => {
+locatedHubs.forEach(h => {
   const m = L.marker([h.lat, h.lng], { icon:pinIcon, title:`#${h.id} · ${h.name}`, riseOnHover:true });
   m.bindPopup(() => popupHTML(h), { maxWidth:300, minWidth:250, autoPanPadding:[30,30] });
   m.on('click', () => setActive(h.id, false));
@@ -1161,6 +1155,7 @@ const qEl      = document.getElementById('q');
 const cTotalEl = document.getElementById('cTotal');
 const cShownEl = document.getElementById('cShown');
 
+// ✅ FIX: সব হাবের সংখ্যা দেখাবে
 cTotalEl.textContent = hubs.length;
 cShownEl.textContent = hubs.length;
 
@@ -1174,15 +1169,25 @@ function renderList(items){
   }
   const frag = document.createDocumentFragment();
   items.slice(0, LIMIT).forEach(h => {
+    const loc = hasCoords(h);
     const d = document.createElement('div');
-    d.className = 'item' + (h.id === activeId.v ? ' active' : '');
+    d.className = 'item' + (h.id === activeId.v ? ' active' : '') + (loc ? '' : ' no-loc');
     d.dataset.id = h.id;
+    const infoLine = loc
+      ? `#${h.id} · ${h.lat.toFixed(3)}, ${h.lng.toFixed(3)}`
+      : `#${h.id} · 📍 Location not available`;
     d.innerHTML = `<div class="dot"></div>
       <div>
         <div class="t">${esc(h.name)}</div>
-        <div class="i">#${h.id} · ${h.lat.toFixed(3)}, ${h.lng.toFixed(3)}</div>
+        <div class="i">${infoLine}</div>
       </div>`;
-    d.addEventListener('click', () => focusHub(h.id, true));
+    d.addEventListener('click', () => {
+      if (loc) focusHub(h.id, true);
+      else {
+        setActive(h.id, true);
+        alert(`"${h.name}" (#${h.id}) এর কোনো ম্যাপ লোকেশন নেই।\nফোন: ${h.phone || '—'}`);
+      }
+    });
     frag.appendChild(d);
   });
   listEl.innerHTML = '';
@@ -1226,8 +1231,15 @@ function setActive(id, scroll){
 
 function focusHub(id, fromList){
   const h = hubs.find(x => x.id === id);
+  if(!h) return;
+  // ✅ FIX: null coordinate হলে safe return
+  if(!hasCoords(h)){
+    setActive(id, true);
+    alert(`"${h.name}" (#${h.id}) এর কোনো ম্যাপ লোকেশন নেই।`);
+    return;
+  }
   const m = markerById.get(id);
-  if(!h || !m) return;
+  if(!m) return;
 
   setActive(id, true);
 
@@ -1243,12 +1255,12 @@ function focusHub(id, fromList){
    MAP BUTTONS
    ===================================================================== */
 document.getElementById('btnFit').addEventListener('click', () => {
+  if(locatedHubs.length === 0) return;
   map.fitBounds(clusters.getBounds(), { padding:[40,40], duration:0.5 });
 });
 document.getElementById('btnZoomIn').addEventListener('click', () => map.zoomIn());
 document.getElementById('btnZoomOut').addEventListener('click', () => map.zoomOut());
 
-/* Theme toggle */
 let isDark = false;
 document.getElementById('btnTheme').addEventListener('click', e => {
   isDark = !isDark;
@@ -1265,11 +1277,11 @@ document.getElementById('menuBtn').addEventListener('click', () => {
    ===================================================================== */
 renderList(hubs);
 
-/* 
-  flyToBounds এর বদলে fitBounds ব্যবহার করা হলো যা অ্যানিমেশন ছাড়া 
-  সাথে সাথেই ম্যাপকে ফিট করে ফেলে (লোড টাইম কমাতে সাহায্য করে) 
-*/
-setTimeout(() => map.fitBounds(clusters.getBounds(), { padding:[40,40] }), 100);
+setTimeout(() => {
+  if(locatedHubs.length > 0){
+    map.fitBounds(clusters.getBounds(), { padding:[40,40] });
+  }
+}, 100);
 </script>
 </body>
 </html>
